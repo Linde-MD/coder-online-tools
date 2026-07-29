@@ -1,6 +1,9 @@
 import {
+  buildDefaultCurveAlias,
   buildDefaultFunctionSource,
   parseSingleFormulaFunction,
+  validateGroupCurveAliases,
+  validateGroupFormulaDependencies,
   validateFormulaFunctionRuntime,
 } from '../../../shared/config/formula-storage.js';
 
@@ -17,6 +20,7 @@ export function initForm(chartConfig, curveGroups, triggerRedraw) {
     return {
       id: nextId('curve'),
       text: `新曲线 ${index + 1}`,
+      alias: buildDefaultCurveAlias(index),
       color: '#1f77b4',
       dataMode: 'points',
       points: '(0,0), (100,100)',
@@ -57,6 +61,7 @@ export function initForm(chartConfig, curveGroups, triggerRedraw) {
     group.curves.forEach((curve, curveIdx) => {
       curve.id = curve.id || nextId('curve');
       curve.text = curve.text || `曲线 ${curveIdx + 1}`;
+      curve.alias = String(curve.alias || '').trim() || buildDefaultCurveAlias(curveIdx);
       curve.color = curve.color || '#1f77b4';
       curve.dataMode = curve.dataMode === 'formula' ? 'formula' : 'points';
       curve.points = curve.points || '';
@@ -96,6 +101,7 @@ export function initForm(chartConfig, curveGroups, triggerRedraw) {
   function moveCurveToGroup(fromGroupIdx, fromCurveIdx, targetGroupIdx) {
     if (!curveGroups[fromGroupIdx] || !curveGroups[targetGroupIdx]) return;
     if (!curveGroups[fromGroupIdx].curves[fromCurveIdx]) return;
+    if (fromGroupIdx === targetGroupIdx) return;
 
     const [movedCurve] = curveGroups[fromGroupIdx].curves.splice(fromCurveIdx, 1);
     if (!movedCurve) return;
@@ -146,7 +152,9 @@ export function initForm(chartConfig, curveGroups, triggerRedraw) {
           <div class="curve-item-card" draggable="true" data-group-idx="${groupIdx}" data-curve-idx="${curveIdx}">
             <div class="curve-item-head">
               <span class="curve-drag-handle" title="拖拽到其他曲线组">::</span>
-              <span class="curve-item-title">曲线 ${curveIdx + 1}</span>
+              <span class="curve-item-title">Curve ID: ${curveIdx + 1}</span>
+              <span class="curve-alias-label">alias</span>
+              <input type="text" value="${escapeAttr(curve.alias || buildDefaultCurveAlias(curveIdx))}" class="form-control form-control-sm curve-alias" data-group-idx="${groupIdx}" data-curve-idx="${curveIdx}" placeholder="如 tempA">
               <button type="button" class="btn-toggle-curve collapse-triangle-btn" data-group-idx="${groupIdx}" data-curve-idx="${curveIdx}" aria-label="折叠曲线" aria-expanded="true"></button>
             </div>
             <div class="curve-item-body mt-1">
@@ -154,10 +162,11 @@ export function initForm(chartConfig, curveGroups, triggerRedraw) {
                 <input type="text" value="${escapeAttr(curve.text)}" class="form-control form-control-sm curve-label" data-group-idx="${groupIdx}" data-curve-idx="${curveIdx}" placeholder="曲线名称">
                 <select class="form-select form-select-sm curve-data-mode" data-group-idx="${groupIdx}" data-curve-idx="${curveIdx}">
                   <option value="points" ${isFormulaMode ? '' : 'selected'}>插值点</option>
-                  <option value="formula" ${isFormulaMode ? 'selected' : ''}>公式</option>
+                  <option value="formula" ${isFormulaMode ? 'selected' : ''}>函数</option>
                 </select>
                 <input type="color" value="${escapeAttr(curve.color)}" class="form-control form-control-color curve-color" data-group-idx="${groupIdx}" data-curve-idx="${curveIdx}" title="曲线颜色">
                 <button type="button" class="btn btn-outline-secondary btn-sm btn-edit-curve-formula" data-group-idx="${groupIdx}" data-curve-idx="${curveIdx}" ${isFormulaMode ? '' : 'disabled'}>编辑函数</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm btn-curve-formula-help" data-group-idx="${groupIdx}" title="函数引用帮助">?</button>
                 <button type="button" class="btn btn-outline-danger btn-sm btn-del-curve" data-group-idx="${groupIdx}" data-curve-idx="${curveIdx}">删除曲线</button>
               </div>
               <div class="curve-item-points">
@@ -198,11 +207,11 @@ export function initForm(chartConfig, curveGroups, triggerRedraw) {
           </div>
           <div class="curve-group-fields curve-group-fields-range mt-2">
             <div class="group-field">
-            <label class="form-label mb-1">公式X最小</label>
+            <label class="form-label mb-1">函数X最小</label>
             <input type="number" class="form-control form-control-sm group-xmin" data-group-idx="${groupIdx}" value="${escapeAttr(group.formulaXMin)}">
             </div>
             <div class="group-field">
-            <label class="form-label mb-1">公式X最大</label>
+            <label class="form-label mb-1">函数X最大</label>
             <input type="number" class="form-control form-control-sm group-xmax" data-group-idx="${groupIdx}" value="${escapeAttr(group.formulaXMax)}">
             </div>
           </div>
@@ -340,6 +349,15 @@ export function initForm(chartConfig, curveGroups, triggerRedraw) {
     }
 
     if (e.target.classList.contains('curve-label')) curve.text = e.target.value;
+    if (e.target.classList.contains('curve-alias')) {
+      curve.alias = e.target.value;
+      try {
+        validateGroupCurveAliases(group.curves);
+        e.target.setCustomValidity('');
+      } catch (error) {
+        e.target.setCustomValidity(error.message);
+      }
+    }
     if (e.target.classList.contains('curve-points')) curve.points = e.target.value;
     if (e.target.classList.contains('curve-color')) curve.color = e.target.value;
 
@@ -347,6 +365,27 @@ export function initForm(chartConfig, curveGroups, triggerRedraw) {
   });
 
   document.addEventListener('focusout', function(e) {
+    if (e.target.classList.contains('curve-alias')) {
+      const groupIdx = Number(e.target.getAttribute('data-group-idx'));
+      const curveIdx = Number(e.target.getAttribute('data-curve-idx'));
+      if (!Number.isFinite(groupIdx) || !Number.isFinite(curveIdx) || !curveGroups[groupIdx] || !curveGroups[groupIdx].curves[curveIdx]) return;
+
+      const normalized = String(e.target.value || '').trim() || buildDefaultCurveAlias(curveIdx);
+      curveGroups[groupIdx].curves[curveIdx].alias = normalized;
+      e.target.value = normalized;
+
+      try {
+        validateGroupCurveAliases(curveGroups[groupIdx].curves);
+        e.target.setCustomValidity('');
+      } catch (error) {
+        e.target.setCustomValidity(error.message);
+      }
+
+      e.target.reportValidity();
+      triggerRedraw();
+      return;
+    }
+
     if (!e.target.classList.contains('curve-group-title-editable')) return;
     const groupIdx = Number(e.target.getAttribute('data-group-idx'));
     if (!Number.isFinite(groupIdx) || !curveGroups[groupIdx]) return;
@@ -483,8 +522,37 @@ export function initForm(chartConfig, curveGroups, triggerRedraw) {
     const mid = Number.isFinite(xMin) && Number.isFinite(xMax) ? (xMin + xMax) / 2 : 0;
     const sampleXs = [xMin, mid, xMax].filter(Number.isFinite);
 
+    if (editingGroupIndex < 0 || editingGroupIndex >= curveGroups.length) {
+      throw new Error('当前编辑的曲线组索引无效。');
+    }
+    const groupCurves = curveGroups[editingGroupIndex]?.curves || [];
+    if (editingCurveIndex < 0 || editingCurveIndex >= groupCurves.length) {
+      throw new Error('当前编辑的曲线索引无效。');
+    }
+
+    const nextCurves = groupCurves.map(curve => ({ ...curve }));
+    validateGroupCurveAliases(nextCurves);
+    nextCurves[editingCurveIndex] = {
+      ...nextCurves[editingCurveIndex],
+      dataMode: 'formula',
+      formulaSource: formulaText,
+    };
+
+    const aliasPlaceholders = validateGroupCurveAliases(nextCurves);
+    const refScope = { Math };
+    nextCurves.forEach((_, idx) => {
+      refScope[`x${idx + 1}`] = 0;
+      refScope[`y${idx + 1}`] = 0;
+      refScope[`f${idx + 1}`] = () => 0;
+    });
+    Object.keys(aliasPlaceholders).forEach(alias => {
+      refScope[alias] = () => 0;
+    });
+
     const fn = parseSingleFormulaFunction(formulaText);
-    validateFormulaFunctionRuntime(fn, sampleXs);
+    validateFormulaFunctionRuntime((x) => fn(x, refScope), sampleXs);
+
+    validateGroupFormulaDependencies(nextCurves);
   }
 
   function openFormulaEditor(groupIdx, curveIdx) {
@@ -492,7 +560,7 @@ export function initForm(chartConfig, curveGroups, triggerRedraw) {
     editingCurveIndex = curveIdx;
     const group = curveGroups[groupIdx];
     const curve = group?.curves[curveIdx];
-    formulaTitle.textContent = `公式编辑器（组${groupIdx + 1} 曲线 ${curveIdx + 1}: ${curve ? curve.text : ''}）`;
+    formulaTitle.textContent = `函数编辑器（组${groupIdx + 1} 曲线 ${curveIdx + 1}: ${curve ? curve.text : ''}）`;
     setEditorValue(curve?.formulaSource || buildDefaultFunctionSource(curveIdx));
     formulaError.textContent = '';
     formulaModal.classList.add('open');
@@ -522,6 +590,40 @@ export function initForm(chartConfig, curveGroups, triggerRedraw) {
   closeFormulaBtn.addEventListener('click', closeFormulaEditor);
 
   document.addEventListener('click', function(e) {
+    const helpBtn = e.target.closest('.btn-curve-formula-help');
+    if (helpBtn) {
+      const groupIdx = Number(helpBtn.getAttribute('data-group-idx'));
+      const group = Number.isFinite(groupIdx) ? curveGroups[groupIdx] : null;
+      const curveCount = group?.curves?.length || 0;
+      const aliasTips = (group?.curves || []).map((curve, idx) => {
+        const alias = String(curve.alias || '').trim() || buildDefaultCurveAlias(idx);
+        return `   Curve ID: ${idx + 1} => ${alias}`;
+      });
+      const lines = [
+        '函数帮助',
+        '',
+        '1) 仍使用箭头函数格式：',
+        '   (x) => { return ...; }',
+        '',
+        '2) 可用引用：',
+        '   x  = 当前横坐标',
+        `   y1..y${Math.max(curveCount, 1)} = 同组曲线在当前 x 的值`,
+        `   f1(x)..f${Math.max(curveCount, 1)}(x) = 同组曲线函数调用（支持 f2(x + 1)）`,
+        '   alias(x) = 按曲线 alias 调用，例如 tempA(x)',
+        '',
+        '3) 当前组 alias：',
+        ...(aliasTips.length > 0 ? aliasTips : ['   无']),
+        '',
+        '4) 示例：',
+        '   (x) => { return Math.abs(y1 - y2); }',
+        '   (x) => { return f1(x) - tempA(x); }',
+        '',
+        '5) 注意：禁止循环依赖（例如曲线1依赖曲线2，同时曲线2又依赖曲线1）。'
+      ];
+      window.alert(lines.join('\n'));
+      return;
+    }
+
     if (!e.target.classList.contains('btn-edit-curve-formula')) return;
     const groupIdx = Number(e.target.getAttribute('data-group-idx'));
     const curveIdx = Number(e.target.getAttribute('data-curve-idx'));

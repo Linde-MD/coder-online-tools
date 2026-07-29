@@ -749,6 +749,7 @@ body.theme-warm-editorial {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
 }
 
 .curve-item-head .btn-toggle-curve {
@@ -771,6 +772,17 @@ body.theme-warm-editorial {
     font-weight: 700;
     color: var(--color-muted);
     letter-spacing: 0.2px;
+    min-width: 34px;
+}
+
+.curve-alias-label {
+    font-size: 11px;
+    color: var(--color-muted);
+}
+
+.curve-alias {
+    width: 140px;
+    max-width: 38vw;
 }
 
 .curve-item-body {
@@ -780,7 +792,7 @@ body.theme-warm-editorial {
 
 .curve-item-toolbar {
     display: grid;
-    grid-template-columns: minmax(180px, 1.6fr) minmax(110px, 0.9fr) 56px auto auto;
+    grid-template-columns: minmax(160px, 1.5fr) minmax(104px, 0.9fr) 56px auto auto auto;
     gap: 8px;
     align-items: center;
 }
@@ -913,6 +925,15 @@ body.theme-warm-editorial {
     .curve-group-fields-main,
     .curve-group-fields-range {
         grid-template-columns: 1fr;
+    }
+
+    .curve-alias {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .curve-item-head .btn-toggle-curve {
+        margin-left: 0;
     }
 
     .curve-item-toolbar {

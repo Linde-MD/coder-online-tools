@@ -1,10 +1,17 @@
 {
-    "name": "nodejs-tools",
-    "version": "0.0.1",
+    "name": "coder-online-tools",
+    "version": "0.1.0",
     "author": "lidong",
-    "description": "Auxiliary script tools related to work.",
+    "description": "Vite + Koa based online tools for chart plotting and J1939 conversion.",
+    "homepage": "https://linde-md.github.io/coder-online-tools/",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/Linde-MD/coder-online-tools.git"
+    },
     "keywords": [
         "node.js",
+        "vite",
+        "koa",
         "CAN",
         "J1939"
     ],
@@ -14,7 +21,6 @@
         "koa": "^3.0.0",
         "koa-proxies": "^0.12.4",
         "koa-static": "^5.0.0",
-        "live-server": "^1.2.2",
         "lodash": "^4.17.21"
     },
     "devDependencies": {
@@ -23,7 +29,6 @@
     },
     "scripts": {
         "dev": "vite",
-        "server": "npm run dev",
         "build:web": "vite build",
         "preview": "vite preview",
         "serve:koa": "node scripts/server/koa-server.js",

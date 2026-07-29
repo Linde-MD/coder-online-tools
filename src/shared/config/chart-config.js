@@ -56,6 +56,7 @@ export const chartConfig = {
         {
           color: '#1f77b4',
           text: '示例曲线-括号点',
+          alias: 'curve1',
           dataMode: 'points',
           points: '(0, 20), (25, 55), (50, 35), (75, 70), (100, 45)',
           formulaSource: '(x) => {\n  return 0;\n}'
@@ -63,6 +64,7 @@ export const chartConfig = {
         {
           color: '#d62728',
           text: '示例曲线-两列点',
+          alias: 'curve2',
           dataMode: 'points',
           points: '0 60\n25 30\n50 75\n75 40\n100 80',
           formulaSource: '(x) => {\n  return x;\n}'
@@ -70,6 +72,7 @@ export const chartConfig = {
         {
           color: '#2ca02c',
           text: '示例曲线-公式',
+          alias: 'curve3',
           dataMode: 'formula',
           points: '',
           formulaSource: '(x) => {\n  return 50 + 20 * Math.sin(x / 12);\n}'
