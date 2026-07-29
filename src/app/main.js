@@ -14,6 +14,80 @@ import {
 } from '../shared/config/formula-storage.js';
 import { parseCoordinatePoints } from '../shared/utils/common-utils.js';
 
+const CHART_UI_STORAGE_KEY = 'coderOnlineTools.chartUiState.v1';
+
+function readChartUiStateFromStorage() {
+  try {
+    const raw = localStorage.getItem(CHART_UI_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function applyChartUiStateToConfig(state) {
+  if (!state || typeof state !== 'object') return;
+
+  const inputs = state.chartInputs;
+  if (inputs && typeof inputs === 'object') {
+    const width = Number(inputs.width);
+    const height = Number(inputs.height);
+    if (Number.isFinite(width)) chartConfig.width = width;
+    if (Number.isFinite(height)) chartConfig.height = height;
+
+    if (typeof inputs.showMaxGuideLines === 'boolean') chartConfig.showMaxGuideLines = inputs.showMaxGuideLines;
+    if (typeof inputs.showGrid === 'boolean') chartConfig.showGrid = inputs.showGrid;
+    if (typeof inputs.showPoints === 'boolean') chartConfig.showPoints = inputs.showPoints;
+
+    if (typeof inputs.chartBackgroundColor === 'string' && inputs.chartBackgroundColor) chartConfig.chartBackgroundColor = inputs.chartBackgroundColor;
+    if (typeof inputs.axisColor === 'string' && inputs.axisColor) chartConfig.axisColor = inputs.axisColor;
+    if (typeof inputs.tickColor === 'string' && inputs.tickColor) chartConfig.tickColor = inputs.tickColor;
+    if (typeof inputs.gridColor === 'string' && inputs.gridColor) chartConfig.gridColor = inputs.gridColor;
+    if (typeof inputs.guideLineColor === 'string' && inputs.guideLineColor) chartConfig.guideLineColor = inputs.guideLineColor;
+  }
+
+  if (Array.isArray(state.curveGroups) && state.curveGroups.length > 0) {
+    chartConfig.chartGroups = state.curveGroups;
+  }
+}
+
+function saveChartUiState(curveGroups) {
+  try {
+    const widthInput = document.getElementById('input-width');
+    const heightInput = document.getElementById('input-height');
+    const showMaxInput = document.getElementById('input-showMaxGuideLines');
+    const showGridInput = document.getElementById('input-showGrid');
+    const showPointsInput = document.getElementById('input-showPoints');
+    const bgInput = document.getElementById('input-bgcolor');
+    const axisInput = document.getElementById('input-axis-color');
+    const tickInput = document.getElementById('input-tick-color');
+    const gridInput = document.getElementById('input-grid-color');
+    const guideInput = document.getElementById('input-guide-color');
+
+    const payload = {
+      chartInputs: {
+        width: Number(widthInput?.value),
+        height: Number(heightInput?.value),
+        showMaxGuideLines: Boolean(showMaxInput?.checked),
+        showGrid: Boolean(showGridInput?.checked),
+        showPoints: Boolean(showPointsInput?.checked),
+        chartBackgroundColor: bgInput?.value || chartConfig.chartBackgroundColor,
+        axisColor: axisInput?.value || chartConfig.axisColor,
+        tickColor: tickInput?.value || chartConfig.tickColor,
+        gridColor: gridInput?.value || chartConfig.gridColor,
+        guideLineColor: guideInput?.value || chartConfig.guideLineColor,
+      },
+      curveGroups: Array.isArray(curveGroups) ? curveGroups : [],
+    };
+
+    localStorage.setItem(CHART_UI_STORAGE_KEY, JSON.stringify(payload));
+  } catch (_) {
+    // Ignore localStorage errors to avoid affecting render flow.
+  }
+}
+
 function normalizePoints(points = []) {
   return points
     .map(item => ({ x: Number(item.x), y: Number(item.y) }))
@@ -210,6 +284,7 @@ function buildInitialGroups() {
   }];
 }
 
+applyChartUiStateToConfig(readChartUiStateFromStorage());
 let curveGroups = buildInitialGroups();
 
 function triggerRedraw() {
@@ -271,6 +346,7 @@ function triggerRedraw() {
     wrapper.style.setProperty('--chart-label-bg', 'rgba(255,255,255,0.72)');
   });
   
+  saveChartUiState(curveGroups);
   renderChart(options);
 }
 

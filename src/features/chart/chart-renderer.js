@@ -102,8 +102,15 @@ export function renderChart(options = {}) {
       .domain([xMin, xMax]).range([margin.left, width - margin.right]);
     const yScale = d3.scaleLinear()
       .domain([yMin, yMax]).range([height - margin.bottom, margin.top]);
-    const xAxis = d3.axisBottom(xScale);
-    const yAxis = d3.axisLeft(yScale);
+    const plotWidth = Math.max(120, width - margin.left - margin.right);
+    const plotHeight = Math.max(120, height - margin.top - margin.bottom);
+
+    // 根据绘图区像素宽高动态调整刻度数量：拖拽放大后，刻度和网格会更密集。
+    const xTickCount = Math.max(4, Math.min(28, Math.round(plotWidth / 78)));
+    const yTickCount = Math.max(4, Math.min(24, Math.round(plotHeight / 62)));
+
+    const xAxis = d3.axisBottom(xScale).ticks(xTickCount);
+    const yAxis = d3.axisLeft(yScale).ticks(yTickCount);
 
     const xLabelText = `${group.xName}${group.xUnit ? ` (${group.xUnit})` : ''}`;
     const yLabelText = `${group.yName}${group.yUnit ? ` (${group.yUnit})` : ''}`;
@@ -118,13 +125,10 @@ export function renderChart(options = {}) {
       .text(group.title);
 
     if (showGridLines) {
-      const plotHeight = height - margin.top - margin.bottom;
-      const plotWidth = width - margin.left - margin.right;
-
       svg.append('g')
         .attr('class', 'grid grid-x')
         .attr('transform', `translate(0, ${height - margin.bottom})`)
-        .call(d3.axisBottom(xScale).tickSize(-plotHeight).tickFormat(''))
+        .call(d3.axisBottom(xScale).ticks(xTickCount).tickSize(-plotHeight).tickFormat(''))
         .selectAll('line')
         .attr('stroke', gridColor)
         .attr('stroke-dasharray', '2,2');
@@ -132,7 +136,7 @@ export function renderChart(options = {}) {
       svg.append('g')
         .attr('class', 'grid grid-y')
         .attr('transform', `translate(${margin.left}, 0)`)
-        .call(d3.axisLeft(yScale).tickSize(-plotWidth).tickFormat(''))
+        .call(d3.axisLeft(yScale).ticks(yTickCount).tickSize(-plotWidth).tickFormat(''))
         .selectAll('line')
         .attr('stroke', gridColor)
         .attr('stroke-dasharray', '2,2');

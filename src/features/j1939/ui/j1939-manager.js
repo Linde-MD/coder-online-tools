@@ -6,6 +6,8 @@ import {
   parseNumberInput
 } from '../../../shared/utils/j1939.js';
 
+const J1939_UI_STORAGE_KEY = 'coderOnlineTools.j1939UiState.v1';
+
 export function initJ1939Tool() {
   const idInput = document.getElementById('input-j1939-id');
   const idBtn = document.getElementById('btn-convert-id');
@@ -24,6 +26,40 @@ export function initJ1939Tool() {
   }
 
   let daLastEditable = daInput.value;
+
+  function saveJ1939UiState() {
+    try {
+      const payload = {
+        id: idInput.value,
+        pgn: pgnInput.value,
+        priority: priorityInput.value,
+        sa: saInput.value,
+        da: daInput.value,
+        daLastEditable,
+      };
+      localStorage.setItem(J1939_UI_STORAGE_KEY, JSON.stringify(payload));
+    } catch (_) {
+      // Ignore localStorage errors to avoid affecting conversion flow.
+    }
+  }
+
+  function loadJ1939UiState() {
+    try {
+      const raw = localStorage.getItem(J1939_UI_STORAGE_KEY);
+      if (!raw) return;
+      const state = JSON.parse(raw);
+      if (!state || typeof state !== 'object') return;
+
+      if (typeof state.id === 'string') idInput.value = state.id;
+      if (typeof state.pgn === 'string') pgnInput.value = state.pgn;
+      if (typeof state.priority === 'string') priorityInput.value = state.priority;
+      if (typeof state.sa === 'string') saInput.value = state.sa;
+      if (typeof state.da === 'string') daInput.value = state.da;
+      if (typeof state.daLastEditable === 'string') daLastEditable = state.daLastEditable;
+    } catch (_) {
+      // Ignore corrupted storage.
+    }
+  }
 
   function renderResultRows(rows) {
     return `
@@ -109,6 +145,7 @@ export function initJ1939Tool() {
       daInput.classList.remove('input-disabled');
       daInput.value = daLastEditable;
       pgnMsg.textContent = '请输入有效 PGN（0 ~ 0x3FFFF）。';
+      saveJ1939UiState();
       return;
     }
 
@@ -123,6 +160,7 @@ export function initJ1939Tool() {
       daInput.classList.add('input-disabled');
       daInput.value = 'broadcast';
       pgnMsg.textContent = '';
+      saveJ1939UiState();
       return;
     }
 
@@ -137,6 +175,8 @@ export function initJ1939Tool() {
     } else {
       pgnMsg.textContent = '';
     }
+
+    saveJ1939UiState();
   }
 
   function convertIdToPgn() {
@@ -194,10 +234,16 @@ export function initJ1939Tool() {
   idBtn.addEventListener('click', convertIdToPgn);
   pgnBtn.addEventListener('click', convertPgnToId);
   pgnInput.addEventListener('input', updateDaStateByPgn);
+  idInput.addEventListener('input', saveJ1939UiState);
+  priorityInput.addEventListener('input', saveJ1939UiState);
+  saInput.addEventListener('input', saveJ1939UiState);
+  daInput.addEventListener('input', saveJ1939UiState);
   bindCopyAction(idResult);
   bindCopyAction(pgnResult);
 
+  loadJ1939UiState();
   updateDaStateByPgn();
   convertIdToPgn();
   convertPgnToId();
+  saveJ1939UiState();
 }
