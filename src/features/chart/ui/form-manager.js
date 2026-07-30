@@ -149,9 +149,9 @@ export function initForm(chartConfig, curveGroups, triggerRedraw) {
       const curvesHtml = group.curves.map((curve, curveIdx) => {
         const isFormulaMode = curve.dataMode === 'formula';
         return `
-          <div class="curve-item-card" draggable="true" data-group-idx="${groupIdx}" data-curve-idx="${curveIdx}">
+          <div class="curve-item-card" data-group-idx="${groupIdx}" data-curve-idx="${curveIdx}">
             <div class="curve-item-head">
-              <span class="curve-drag-handle" title="拖拽到其他曲线组">::</span>
+              <span class="curve-drag-handle" draggable="true" title="拖拽到其他曲线组">::</span>
               <span class="curve-item-title">Curve ID: ${curveIdx + 1}</span>
               <span class="curve-alias-label">alias</span>
               <input type="text" value="${escapeAttr(curve.alias || buildDefaultCurveAlias(curveIdx))}" class="form-control form-control-sm curve-alias" data-group-idx="${groupIdx}" data-curve-idx="${curveIdx}" placeholder="如 tempA">
@@ -668,8 +668,12 @@ export function initForm(chartConfig, curveGroups, triggerRedraw) {
   });
 
   document.addEventListener('dragstart', function(e) {
-    const curveCard = e.target.closest('.curve-item-card');
+    const dragHandle = e.target.closest('.curve-drag-handle');
+    if (!dragHandle) return;
+
+    const curveCard = dragHandle.closest('.curve-item-card');
     if (!curveCard) return;
+
     const fromGroupIdx = Number(curveCard.getAttribute('data-group-idx'));
     const fromCurveIdx = Number(curveCard.getAttribute('data-curve-idx'));
     if (!Number.isFinite(fromGroupIdx) || !Number.isFinite(fromCurveIdx)) return;

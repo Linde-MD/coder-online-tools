@@ -90,4 +90,4 @@ npm run build:exe
 1. 提交前至少执行一次 `npm run build:web`。
 2. 发布前执行 `npm run build:exe` 并验证 EXE 可启动。
 3. 结构调整时只需要保证 `dist/web/` 输出可用，`pkg.assets` 固定保持 `dist/web/**/*`。
-4. 尽量优先使用 Bootstrap 的布局与表单类（`row/col/form-control/btn`），减少重复自定义样式。
+
