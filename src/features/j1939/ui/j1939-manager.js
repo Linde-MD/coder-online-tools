@@ -205,7 +205,7 @@ export function initJ1939Tool() {
       { name: 'ID', value: `${formatHex(id, 8)} (${id})`, isMain: true, copyValue: formatHex(id, 8) },
       { name: 'Priority', value: `${decoded.P}` },
       { name: 'PGN', value: `${decoded.PGN} (${formatHex(decoded.PGN, 5)})${specialTag}` },
-      { name: 'PF / GE', value: `${decoded.PF} / ${decoded.GE} (${formatHex(decoded.GE, 2)})` },
+      { name: 'PF / GE', value: `${decoded.PF} (${formatHex(decoded.PF, 2)}) / ${decoded.GE} (${formatHex(decoded.GE, 2)})` },
       { name: 'Destination Address', value: daText },
       { name: 'Source Address', value: `${decoded.SA} (${formatHex(decoded.SA, 2)})` },
       { name: 'Data Page', value: `${decoded.DP}` }

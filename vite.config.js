@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import vue from '@vitejs/plugin-vue';
 
 function normalizeBasePath(input) {
   const raw = String(input || '').trim();
@@ -13,6 +14,7 @@ function normalizeBasePath(input) {
 const pagesBase = normalizeBasePath(process.env.VITE_BASE_PATH || '/');
 
 export default defineConfig({
+  plugins: [vue()],
   base: pagesBase,
   publicDir: 'public',
   server: {

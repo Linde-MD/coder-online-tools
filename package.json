@@ -2,7 +2,7 @@
     "name": "coder-online-tools",
     "version": "0.1.0",
     "author": "lidong",
-    "description": "Vite + Koa based online tools for chart plotting and J1939 conversion.",
+    "description": "Vue + Tailwind + Vite based online tools for chart plotting and J1939 conversion.",
     "homepage": "https://linde-md.github.io/coder-online-tools/",
     "repository": {
         "type": "git",
@@ -21,10 +21,16 @@
         "koa": "^3.0.0",
         "koa-proxies": "^0.12.4",
         "koa-static": "^5.0.0",
-        "lodash": "^4.17.21"
+        "lodash": "^4.17.21",
+        "vue": "^3.5.40"
     },
     "devDependencies": {
+        "@tailwindcss/postcss": "^4.3.3",
+        "@vitejs/plugin-vue": "^6.0.8",
+        "autoprefixer": "^10.5.4",
         "pkg": "^5.8.1",
+        "postcss": "^8.5.25",
+        "tailwindcss": "^4.3.3",
         "vite": "^7.1.0"
     },
     "scripts": {

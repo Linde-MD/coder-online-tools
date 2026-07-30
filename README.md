@@ -6,7 +6,7 @@ Pages 访问：https://linde-md.github.io/coder-online-tools/
 ## 1. 项目定位
 这是一个前后端分离的工具型项目：
 
-- 前端：Vite + 原生 JS 模块 + Bootstrap + D3
+- 前端：Vue 3 + Tailwind CSS + Vite + Bootstrap + D3
 - 本地服务：Node.js + Koa（静态资源托管 + /api 代理）
 - 发布形态：Windows EXE（通过 pkg 打包 Koa 服务）
 

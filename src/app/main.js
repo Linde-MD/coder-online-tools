@@ -286,6 +286,7 @@ function buildInitialGroups() {
 
 applyChartUiStateToConfig(readChartUiStateFromStorage());
 let curveGroups = buildInitialGroups();
+let bootstrapped = false;
 
 function triggerRedraw() {
   const widthInput = document.getElementById('input-width');
@@ -350,9 +351,14 @@ function triggerRedraw() {
   renderChart(options);
 }
 
-initForm(chartConfig, curveGroups, triggerRedraw);
-initResize(triggerRedraw);
-initFeatureMenu();
-initJ1939Tool();
+export function bootstrapApp() {
+  if (bootstrapped) return;
+  bootstrapped = true;
 
-triggerRedraw();
+  initForm(chartConfig, curveGroups, triggerRedraw);
+  initResize(triggerRedraw);
+  initFeatureMenu();
+  initJ1939Tool();
+
+  triggerRedraw();
+}

@@ -166,7 +166,7 @@ export function initForm(chartConfig, curveGroups, triggerRedraw) {
                 </select>
                 <input type="color" value="${escapeAttr(curve.color)}" class="form-control form-control-color curve-color" data-group-idx="${groupIdx}" data-curve-idx="${curveIdx}" title="曲线颜色">
                 <button type="button" class="btn btn-outline-secondary btn-sm btn-edit-curve-formula" data-group-idx="${groupIdx}" data-curve-idx="${curveIdx}" ${isFormulaMode ? '' : 'disabled'}>编辑函数</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm btn-curve-formula-help" data-group-idx="${groupIdx}" title="函数引用帮助">?</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm btn-curve-formula-help" data-group-idx="${groupIdx}" data-curve-idx="${curveIdx}" title="帮助">?</button>
                 <button type="button" class="btn btn-outline-danger btn-sm btn-del-curve" data-group-idx="${groupIdx}" data-curve-idx="${curveIdx}">删除曲线</button>
               </div>
               <div class="curve-item-points">
@@ -593,7 +593,33 @@ export function initForm(chartConfig, curveGroups, triggerRedraw) {
     const helpBtn = e.target.closest('.btn-curve-formula-help');
     if (helpBtn) {
       const groupIdx = Number(helpBtn.getAttribute('data-group-idx'));
+      const curveIdx = Number(helpBtn.getAttribute('data-curve-idx'));
       const group = Number.isFinite(groupIdx) ? curveGroups[groupIdx] : null;
+      const curve = Number.isFinite(curveIdx) && group?.curves ? group.curves[curveIdx] : null;
+
+      if (!curve) {
+        window.alert('未找到当前曲线。');
+        return;
+      }
+
+      if (curve.dataMode !== 'formula') {
+        const pointsHelpLines = [
+          '插值点帮助',
+          '',
+          '1) 支持两种常用输入格式：',
+          '   (0, 10), (10, 30), (20, 25)',
+          '   0 10',
+          '   10 30',
+          '   20 25',
+          '',
+          '2) 每个点表示一个 (x, y) 坐标。',
+          '3) 点与点之间按线性插值计算。',
+          '4) 建议 x 值从小到大填写，便于阅读和维护。',
+        ];
+        window.alert(pointsHelpLines.join('\n'));
+        return;
+      }
+
       const curveCount = group?.curves?.length || 0;
       const aliasTips = (group?.curves || []).map((curve, idx) => {
         const alias = String(curve.alias || '').trim() || buildDefaultCurveAlias(idx);
@@ -602,23 +628,20 @@ export function initForm(chartConfig, curveGroups, triggerRedraw) {
       const lines = [
         '函数帮助',
         '',
-        '1) 仍使用箭头函数格式：',
-        '   (x) => { return ...; }',
-        '',
-        '2) 可用引用：',
+        '1) 可用引用：',
         '   x  = 当前横坐标',
         `   y1..y${Math.max(curveCount, 1)} = 同组曲线在当前 x 的值`,
         `   f1(x)..f${Math.max(curveCount, 1)}(x) = 同组曲线函数调用（支持 f2(x + 1)）`,
         '   alias(x) = 按曲线 alias 调用，例如 tempA(x)',
         '',
-        '3) 当前组 alias：',
+        '2) 当前组 alias：',
         ...(aliasTips.length > 0 ? aliasTips : ['   无']),
         '',
-        '4) 示例：',
+        '3) 示例：',
         '   (x) => { return Math.abs(y1 - y2); }',
         '   (x) => { return f1(x) - tempA(x); }',
         '',
-        '5) 注意：禁止循环依赖（例如曲线1依赖曲线2，同时曲线2又依赖曲线1）。'
+        '4) 注意：禁止循环依赖（例如曲线1依赖曲线2，同时曲线2又依赖曲线1）。'
       ];
       window.alert(lines.join('\n'));
       return;

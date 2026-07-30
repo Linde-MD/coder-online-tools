@@ -40,7 +40,6 @@ function getInspectorState(wrapper) {
     state = {
       panels: [],
       currentX: null,
-      panelSeed: 0,
       columnSeed: 0,
       contextX: 0,
       contextY: 0,
@@ -324,14 +323,13 @@ export function renderChart(options = {}) {
         return existingPanel;
       }
 
-      state.panelSeed += 1;
       state.columnSeed += 1;
 
       const panel = document.createElement('div');
       panel.className = 'chart-inspector-panel';
       panel.innerHTML = `
         <div class="chart-inspector-head" draggable="false">
-          <span class="chart-inspector-title">数据观察窗 ${state.panelSeed}</span>
+          <span class="chart-inspector-title">数据观察窗</span>
           <button type="button" class="chart-inspector-close" title="关闭">×</button>
         </div>
         <div class="chart-inspector-body">
