@@ -1,5 +1,6 @@
 export function createDefaultCurveModel(index = 0, deps = {}) {
   const { nextId, buildDefaultCurveAlias, buildDefaultFunctionSource } = deps;
+  const defaultDslSource = index === 0 ? '0' : String(index * 10);
   return {
     id: typeof nextId === 'function' ? nextId('curve') : `curve-${Date.now()}-${index}`,
     text: `新曲线 ${index + 1}`,
@@ -7,6 +8,8 @@ export function createDefaultCurveModel(index = 0, deps = {}) {
     color: '#1f77b4',
     dataMode: 'points',
     points: '(0,0), (100,100)',
+    formulaLanguage: 'dsl',
+    formulaDslSource: defaultDslSource,
     formulaSource: buildDefaultFunctionSource(index),
   };
 }
@@ -61,6 +64,20 @@ export function normalizeCurveGroups(curveGroups, deps = {}) {
       curve.color = curve.color || '#1f77b4';
       curve.dataMode = curve.dataMode === 'formula' ? 'formula' : 'points';
       curve.points = curve.points || '';
+      const rawDslSource = String(curve.formulaDslSource || '').trim();
+      const rawJsSource = String(curve.formulaSource || '').trim();
+      if (curve.formulaLanguage === 'dsl' || curve.formulaLanguage === 'js') {
+        curve.formulaLanguage = curve.formulaLanguage;
+      } else if (rawDslSource) {
+        curve.formulaLanguage = 'dsl';
+      } else if (rawJsSource.includes('=>')) {
+        curve.formulaLanguage = 'js';
+      } else {
+        curve.formulaLanguage = 'dsl';
+      }
+
+      const defaultDslSource = curveIdx === 0 ? '0' : String(curveIdx * 10);
+      curve.formulaDslSource = rawDslSource || (curve.formulaLanguage === 'dsl' ? defaultDslSource : '');
       curve.formulaSource = curve.formulaSource || buildDefaultFunctionSource(curveIdx);
     });
   });

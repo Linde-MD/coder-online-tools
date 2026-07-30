@@ -42,6 +42,18 @@ function samplePointSeriesAtX(points, x) {
 }
 
 function ensureCurve(curve, idx) {
+  const rawJsSource = String(curve.formulaSource || '').trim();
+  const rawDslSource = String(curve.formulaDslSource || '').trim();
+  let formulaLanguage = 'dsl';
+  if (curve.formulaLanguage === 'dsl' || curve.formulaLanguage === 'js') {
+    formulaLanguage = curve.formulaLanguage;
+  } else if (rawDslSource) {
+    formulaLanguage = 'dsl';
+  } else if (rawJsSource.includes('=>')) {
+    formulaLanguage = 'js';
+  }
+
+  const defaultDslSource = idx === 0 ? '0' : String(idx * 10);
   return {
     id: curve.id || `curve-${Date.now()}-${idx}`,
     color: curve.color || '#1f77b4',
@@ -49,6 +61,8 @@ function ensureCurve(curve, idx) {
     alias: String(curve.alias || '').trim() || buildDefaultCurveAlias(idx),
     dataMode: curve.dataMode === 'formula' ? 'formula' : 'points',
     points: curve.points || '',
+    formulaLanguage,
+    formulaDslSource: rawDslSource || (formulaLanguage === 'dsl' ? defaultDslSource : ''),
     formulaSource: curve.formulaSource || buildDefaultFunctionSource(idx),
   };
 }

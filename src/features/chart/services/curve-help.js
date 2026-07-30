@@ -23,10 +23,21 @@ export function buildCurveHelpMessage(curveGroups, groupIdx, curveIdx, buildDefa
   }
 
   const curveCount = group?.curves?.length || 0;
+  const formulaLanguage = curve.formulaLanguage === 'dsl' ? 'dsl' : 'js';
   const aliasTips = (group?.curves || []).map((groupCurve, idx) => {
     const alias = String(groupCurve.alias || '').trim() || buildDefaultCurveAlias(idx);
     return `   Curve ID: ${idx + 1} => ${alias}`;
   });
+
+  const examples = formulaLanguage === 'dsl'
+    ? [
+      '   abs(y1 - y2)',
+      '   f1(x) - tempA(x)',
+    ]
+    : [
+      '   (x) => { return Math.abs(y1 - y2); }',
+      '   (x) => { return f1(x) - tempA(x); }',
+    ];
 
   return [
     '函数帮助',
@@ -41,8 +52,7 @@ export function buildCurveHelpMessage(curveGroups, groupIdx, curveIdx, buildDefa
     ...(aliasTips.length > 0 ? aliasTips : ['   无']),
     '',
     '3) 示例：',
-    '   (x) => { return Math.abs(y1 - y2); }',
-    '   (x) => { return f1(x) - tempA(x); }',
+    ...examples,
     '',
     '4) 注意：禁止循环依赖（例如曲线1依赖曲线2，同时曲线2又依赖曲线1）。',
   ].join('\n');

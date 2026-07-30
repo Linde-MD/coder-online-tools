@@ -386,6 +386,57 @@ body.theme-warm-editorial {
     margin-bottom: 8px;
 }
 
+.formula-language-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.formula-language-select {
+    width: 180px;
+}
+
+.formula-dsl-assist {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.formula-dsl-assist .formula-dsl-assist-btn {
+    --bs-btn-padding-x: 0.62rem;
+    --bs-btn-padding-y: 0.25rem;
+    font-size: 12px;
+}
+
+.formula-dsl-help-panel {
+    margin-bottom: 8px;
+    padding: 8px;
+    border-radius: var(--radius-md);
+    border: 1px solid #d8c4b6;
+    background: #fff8f0;
+}
+
+.formula-dsl-help-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    color: #5e473a;
+}
+
+.formula-dsl-help-text {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 12px;
+    line-height: 1.45;
+    color: #4c4139;
+    font-family: var(--font-code);
+}
+
 .formula-code-editor {
     width: 100%;
     min-height: 280px;

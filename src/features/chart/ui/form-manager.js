@@ -228,12 +228,20 @@ export function initForm(chartConfig, curveGroups, triggerRedraw) {
   bindChartSettingsChangeHandlers(triggerRedraw);
 
   function validateFormulaBeforeSave(payload) {
-    const { editingGroupIndex, editingCurveIndex, formulaText } = payload;
+    const {
+      editingGroupIndex,
+      editingCurveIndex,
+      formulaText,
+      formulaLanguage,
+      formulaDslSource,
+    } = payload;
     validateFormulaDraft({
       curveGroups,
       editingGroupIndex,
       editingCurveIndex,
       formulaText,
+      formulaLanguage,
+      formulaDslSource,
       parseSingleFormulaFunction,
       validateGroupCurveAliases,
       validateGroupFormulaDependencies,
@@ -246,7 +254,7 @@ export function initForm(chartConfig, curveGroups, triggerRedraw) {
     buildDefaultFunctionSource,
     buildFormulaEditorTitle,
     validateFormulaBeforeSave,
-    onFormulaSaved: ({ editingGroupIndex, editingCurveIndex, formulaText }) => {
+    onFormulaSaved: ({ editingGroupIndex, editingCurveIndex, formulaText, formulaLanguage, formulaDslSource }) => {
       if (editingGroupIndex < 0 || editingGroupIndex >= curveGroups.length) {
         throw new Error('当前编辑的曲线组索引无效。');
       }
@@ -256,6 +264,8 @@ export function initForm(chartConfig, curveGroups, triggerRedraw) {
 
       const curve = curveGroups[editingGroupIndex].curves[editingCurveIndex];
       curve.formulaSource = formulaText;
+      curve.formulaLanguage = formulaLanguage === 'dsl' ? 'dsl' : 'js';
+      curve.formulaDslSource = formulaLanguage === 'dsl' ? String(formulaDslSource || '') : '';
       curve.dataMode = 'formula';
       renderCurveGroups();
       triggerRedraw();

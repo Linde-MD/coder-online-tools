@@ -84,7 +84,23 @@
   <div id="formula-editor-modal" class="formula-modal" aria-hidden="true">
     <div class="formula-modal-card" role="dialog" aria-modal="true" aria-labelledby="formula-editor-title">
       <div class="formula-modal-title" id="formula-editor-title">函数编辑器（JS 箭头匿名函数）</div>
-      <div class="formula-modal-tip">请填写单个箭头函数，例如 (x) =&gt; { return x; }。组内可用 y1、f1(x)、别名(x) 引用其他曲线值。</div>
+      <div class="formula-modal-tip">支持 JavaScript 与 DSL 两种编辑语法。组内可用 y1、f1(x)、别名(x) 引用其他曲线值。</div>
+      <div class="formula-language-row">
+        <label class="form-label mb-0" for="formula-language-select">编辑语法</label>
+        <select id="formula-language-select" class="form-select form-select-sm formula-language-select">
+          <option value="js">JavaScript</option>
+          <option value="dsl">DSL（表达式）</option>
+        </select>
+        <button id="btn-formula-dsl-help" type="button" class="btn btn-outline-secondary btn-sm">DSL 帮助</button>
+      </div>
+      <div id="formula-dsl-assist" class="formula-dsl-assist" style="display:none;"></div>
+      <div id="formula-dsl-help-panel" class="formula-dsl-help-panel" style="display:none;">
+        <div class="formula-dsl-help-head">
+          <strong>DSL 语法与函数说明</strong>
+          <button id="btn-formula-dsl-help-close" type="button" class="btn btn-outline-secondary btn-sm">关闭</button>
+        </div>
+        <pre id="formula-dsl-help-text" class="formula-dsl-help-text"></pre>
+      </div>
       <div id="formula-code-editor" class="formula-code-editor"></div>
       <textarea id="textarea-formula-code" class="formula-textarea" style="display:none;"></textarea>
       <div id="formula-editor-error" class="formula-editor-error"></div>

@@ -4,6 +4,8 @@ export function validateFormulaDraft(options) {
     editingGroupIndex,
     editingCurveIndex,
     formulaText,
+    formulaLanguage = 'js',
+    formulaDslSource = '',
     parseSingleFormulaFunction,
     validateGroupCurveAliases,
     validateGroupFormulaDependencies,
@@ -30,6 +32,8 @@ export function validateFormulaDraft(options) {
   nextCurves[editingCurveIndex] = {
     ...nextCurves[editingCurveIndex],
     dataMode: 'formula',
+    formulaLanguage: formulaLanguage === 'dsl' ? 'dsl' : 'js',
+    formulaDslSource: formulaLanguage === 'dsl' ? String(formulaDslSource || '') : '',
     formulaSource: formulaText,
   };
 
