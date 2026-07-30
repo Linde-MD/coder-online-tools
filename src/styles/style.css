@@ -126,7 +126,7 @@ body.theme-warm-editorial {
 .settings-panel-collapsed .settings-collapse-btn::before,
 .curve-group-collapsed .btn-toggle-group::before,
 .curve-item-collapsed .btn-toggle-curve::before {
-    transform: rotate(-90deg);
+    transform: rotate(90deg);
 }
 
 .settings-panel-title {
@@ -208,10 +208,32 @@ body.theme-warm-editorial {
 .settings-display-switch {
     display: inline-flex;
     align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--color-hairline);
+    background: rgba(255, 255, 255, 0.72);
+    transition: background-color 140ms ease, border-color 140ms ease;
+}
+
+.settings-display-switch:hover {
+    background: #fffaf5;
+    border-color: #d7b09f;
+}
+
+.settings-display-switch .form-check-input {
+    margin: 0;
+    width: 15px;
+    height: 15px;
+    accent-color: var(--color-primary);
+    cursor: pointer;
 }
 
 .settings-display-switch .form-check-label {
+    color: #4c453f;
+    font-weight: 600;
     white-space: nowrap;
+    cursor: pointer;
 }
 
 .settings-subcard {
@@ -489,6 +511,32 @@ body.theme-warm-editorial {
     font-size: 12px;
 }
 
+.chart-inspector-curve-text {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 1px 6px;
+    border-radius: 6px;
+    font-weight: 600;
+    color: var(--curve-text-color, #2d2b28);
+    background: rgba(255, 255, 255, 0.82);
+    box-shadow: inset 0 0 0 1px rgba(122, 102, 84, 0.22);
+    text-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.92),
+        0 0 1px rgba(28, 22, 17, 0.55);
+    -webkit-text-stroke: 0.2px rgba(255, 255, 255, 0.75);
+}
+
+.chart-inspector-curve-text::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: var(--curve-color, currentColor);
+    box-shadow: 0 0 0 1px rgba(49, 37, 28, 0.28);
+    flex: 0 0 auto;
+}
+
 .chart-inspector-col-remove {
     border: 0;
     background: transparent;
@@ -666,6 +714,7 @@ body.theme-warm-editorial {
     --bs-btn-padding-x: 0.95rem;
     --bs-btn-padding-y: 0.55rem;
     letter-spacing: 0;
+    transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
 }
 
 .btn-primary,
@@ -699,11 +748,24 @@ body.theme-warm-editorial {
 }
 
 .btn-outline-danger {
-    --bs-btn-color: #8e4a3a;
-    --bs-btn-border-color: #dcb8ad;
-    --bs-btn-hover-bg: #f5e4de;
-    --bs-btn-hover-border-color: #cf8c7d;
-    --bs-btn-hover-color: #703528;
+    color: #7a3328;
+    border-color: #c97f6d;
+    background: #f8e8e3;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.btn-outline-danger:hover,
+.btn-outline-danger:focus-visible {
+    color: #703528;
+    border-color: #cf8c7d;
+    background: #f5e4de;
+    box-shadow: 0 0 0 0.16rem rgba(207, 140, 125, 0.22);
+}
+
+.btn-outline-danger:active {
+    color: #653023;
+    border-color: #be7a6a;
+    background: #f0d7cf;
 }
 
 .form-label {
@@ -739,6 +801,32 @@ body.theme-warm-editorial {
     min-width: 128px;
 }
 
+.feature-tab.btn-primary {
+    color: #fff;
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    box-shadow: 0 6px 14px rgba(204, 120, 92, 0.24);
+}
+
+.feature-tab.btn-primary:hover,
+.feature-tab.btn-primary:focus-visible {
+    background: var(--color-primary-active);
+    border-color: var(--color-primary-active);
+}
+
+.feature-tab.btn-outline-primary {
+    color: #8d4e37;
+    background: #fffaf5;
+    border-color: #d7b09f;
+}
+
+.feature-tab.btn-outline-primary:hover,
+.feature-tab.btn-outline-primary:focus-visible {
+    color: #7a402d;
+    background: #f3e2d8;
+    border-color: #ca927c;
+}
+
 #chart-svg-container {
     display: flex;
     flex-direction: column;
@@ -757,10 +845,11 @@ body.theme-warm-editorial {
 .curve-group-card {
     background: rgba(255, 255, 255, 0.55);
     border: 1px solid rgba(173, 150, 128, 0.55);
-    border-left: 3px solid #b88d70;
+    border-left: 4px solid var(--color-primary);
     border-radius: 0;
     padding: 12px;
     margin-bottom: 12px;
+    box-shadow: 0 4px 12px rgba(54, 39, 27, 0.08);
 }
 
 .curve-group-head {
@@ -830,11 +919,14 @@ body.theme-warm-editorial {
 }
 
 .curve-item-card {
-    background: #fffefb;
-    border: 1px solid rgba(160, 137, 116, 0.55);
-    border-radius: 0;
-    padding: 10px;
+    background: linear-gradient(180deg, #fffefb 0%, #fffaf4 100%);
+    border: 1px solid rgba(160, 137, 116, 0.58);
+    border-left: 4px solid var(--color-primary);
+    border-radius: 10px;
+    padding: 11px 11px 10px;
     margin-bottom: 10px;
+    box-shadow: 0 3px 10px rgba(56, 40, 28, 0.08);
+    transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
 }
 
 .curve-item-card:last-child {
@@ -845,11 +937,25 @@ body.theme-warm-editorial {
     opacity: 0.5;
 }
 
+.curve-item-card:focus-within {
+    border-color: #b87a62;
+    box-shadow: 0 0 0 2px rgba(204, 120, 92, 0.2), 0 6px 16px rgba(56, 40, 28, 0.12);
+}
+
+.curve-item-card.is-formula-mode {
+    border-left-color: var(--color-primary);
+}
+
 .curve-item-head {
     display: flex;
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
+    padding: 6px 8px 8px;
+    border-bottom: 1px dashed rgba(166, 137, 116, 0.55);
+    margin-bottom: 8px;
+    border-radius: 8px;
+    background: rgba(204, 120, 92, 0.09);
 }
 
 .curve-item-head .btn-toggle-curve {
@@ -868,9 +974,9 @@ body.theme-warm-editorial {
 }
 
 .curve-item-title {
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 700;
-    color: var(--color-muted);
+    color: #634537;
     letter-spacing: 0.2px;
     min-width: 34px;
 }
@@ -903,6 +1009,41 @@ body.theme-warm-editorial {
 
 .curve-item-points {
     width: 100%;
+}
+
+.curve-formula-hint {
+    padding: 9px 10px;
+    border: 1px dashed #d9b7a9;
+    border-radius: 8px;
+    background: #fcf3ee;
+    color: #7a402d;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.btn-add-curve-in-group,
+#btn-add-curve-group {
+    color: #7a3e2b;
+    border-color: #c98e79;
+    background: linear-gradient(180deg, #fff9f2 0%, #f8e8df 100%);
+    box-shadow: 0 2px 6px rgba(95, 60, 42, 0.12);
+}
+
+.btn-add-curve-in-group:hover,
+.btn-add-curve-in-group:focus-visible,
+#btn-add-curve-group:hover,
+#btn-add-curve-group:focus-visible {
+    color: #632f20;
+    border-color: #b86f57;
+    background: linear-gradient(180deg, #f7e7de 0%, #f0d3c3 100%);
+    box-shadow: 0 0 0 0.16rem rgba(204, 120, 92, 0.2);
+}
+
+.btn-add-curve-in-group:active,
+#btn-add-curve-group:active {
+    color: #552518;
+    border-color: #a45f49;
+    background: #ecc8b7;
 }
 
 .curve-context-menu {

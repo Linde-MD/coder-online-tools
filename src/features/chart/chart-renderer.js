@@ -50,6 +50,24 @@ function getInspectorState(wrapper) {
   return state;
 }
 
+function getReadableInspectorTextColor(rawColor) {
+  const color = d3.color(rawColor);
+  if (!color) return '#2d2b28';
+
+  const rgb = d3.rgb(color);
+  const brightness = (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 255000;
+
+  // Very bright colors (e.g. yellow) are darkened for better contrast on light chips.
+  if (brightness >= 0.62) {
+    return rgb.darker(2.4).formatHex();
+  }
+  if (brightness >= 0.52) {
+    return rgb.darker(1.5).formatHex();
+  }
+
+  return rgb.formatHex();
+}
+
 export function renderChart(options = {}) {
   // 从 options 中获取或回退到 config
   const width = options.width || chartConfig.width;
@@ -279,11 +297,12 @@ export function renderChart(options = {}) {
       }).join('');
 
       const bodyRows = group.curves.map((curve, idx) => {
+        const readableCurveColor = getReadableInspectorTextColor(curve.color);
         const cells = columns.map(col => {
           const value = Number.isFinite(state.currentX) ? computeCellValue(idx, col, state.currentX) : null;
-          return `<td style="color:${curve.color};">${formatInspectorNumber(value)}</td>`;
+          return `<td><span class="chart-inspector-curve-text" style="--curve-color:${curve.color};--curve-text-color:${readableCurveColor};color:${readableCurveColor};">${formatInspectorNumber(value)}</span></td>`;
         }).join('');
-        return `<tr><th scope="row" style="color:${curve.color};">${curve.text || `曲线 ${idx + 1}`}</th>${cells}</tr>`;
+        return `<tr><th scope="row"><span class="chart-inspector-curve-text" style="--curve-color:${curve.color};--curve-text-color:${readableCurveColor};color:${readableCurveColor};">${curve.text || `曲线 ${idx + 1}`}</span></th>${cells}</tr>`;
       }).join('');
 
       host.innerHTML = `
