@@ -10,7 +10,16 @@
         <aside class="wenyan-sidebar-card wenyan-pane-left" :style="wenyanCardStyle">
           <div class="wenyan-sidebar-head">
             <h3 class="wenyan-sidebar-title">脚本列表</h3>
-            <button type="button" class="btn btn-outline-primary btn-sm" @click="addScript" :disabled="isBusy">新建</button>
+            <button
+              type="button"
+              class="wenyan-icon-tool-btn"
+              title="新建脚本"
+              data-tip="新建脚本"
+              @click="addScript"
+              :disabled="isBusy"
+            >
+              <span aria-hidden="true">＋</span>
+            </button>
           </div>
           <div class="wenyan-script-list">
             <button
@@ -28,7 +37,7 @@
           <div class="wenyan-sidebar-foot">
             <button
               type="button"
-              class="btn btn-outline-danger btn-sm"
+              class="wenyan-tab-btn danger"
               @click="removeActiveScript"
               :disabled="isBusy || currentScript?.isBuiltin || scripts.length <= 1"
             >
@@ -57,21 +66,23 @@
               >
             </div>
             <div class="wenyan-actions">
-              <button type="button" class="btn btn-outline-secondary btn-sm" @click="openHelpModal" :disabled="isBusy">
-                语法帮助
-              </button>
-              <button type="button" class="btn btn-outline-primary btn-sm" @click="compileAll" :disabled="isBusy">
-                编译 JS/Python
-              </button>
-              <button type="button" class="btn btn-success btn-sm" @click="runProgram" :disabled="isBusy">
-                运行
-              </button>
-              <button type="button" class="btn btn-outline-secondary btn-sm" @click="renderBookPages" :disabled="isBusy">
-                渲染古书
-              </button>
-              <button type="button" class="btn btn-outline-secondary btn-sm" @click="restoreCurrentScript" :disabled="isBusy">
-                还原当前脚本
-              </button>
+              <div class="wenyan-toolbar" role="toolbar" aria-label="文言工具栏">
+                <button type="button" class="wenyan-icon-tool-btn" title="语法帮助" data-tip="语法帮助" @click="openHelpModal" :disabled="isBusy">
+                  <span aria-hidden="true">？</span>
+                </button>
+                <button type="button" class="wenyan-icon-tool-btn" title="编译 JS/Python" data-tip="编译" @click="compileAll" :disabled="isBusy">
+                  <span aria-hidden="true">⚙</span>
+                </button>
+                <button type="button" class="wenyan-icon-tool-btn accent" title="运行" data-tip="运行" @click="runProgram" :disabled="isBusy">
+                  <span aria-hidden="true">▶</span>
+                </button>
+                <button type="button" class="wenyan-icon-tool-btn" title="渲染古书" data-tip="渲染古书" @click="renderBookPages" :disabled="isBusy">
+                  <span aria-hidden="true">卷</span>
+                </button>
+                <button type="button" class="wenyan-icon-tool-btn" title="还原当前脚本" data-tip="还原" @click="restoreCurrentScript" :disabled="isBusy">
+                  <span aria-hidden="true">↺</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -99,32 +110,32 @@
           <div class="wenyan-result-tabs">
             <button
               type="button"
-              class="btn btn-sm"
-              :class="activeTab === 'js' ? 'btn-primary' : 'btn-outline-primary'"
+              class="wenyan-tab-btn"
+              :class="{ active: activeTab === 'js' }"
               @click="activeTab = 'js'"
             >
               JavaScript
             </button>
             <button
               type="button"
-              class="btn btn-sm"
-              :class="activeTab === 'py' ? 'btn-primary' : 'btn-outline-primary'"
+              class="wenyan-tab-btn"
+              :class="{ active: activeTab === 'py' }"
               @click="activeTab = 'py'"
             >
               Python
             </button>
             <button
               type="button"
-              class="btn btn-sm"
-              :class="activeTab === 'run' ? 'btn-primary' : 'btn-outline-primary'"
+              class="wenyan-tab-btn"
+              :class="{ active: activeTab === 'run' }"
               @click="activeTab = 'run'"
             >
               运行输出
             </button>
             <button
               type="button"
-              class="btn btn-sm"
-              :class="activeTab === 'render' ? 'btn-primary' : 'btn-outline-primary'"
+              class="wenyan-tab-btn"
+              :class="{ active: activeTab === 'render' }"
               @click="activeTab = 'render'"
             >
               古书渲染
@@ -138,7 +149,7 @@
             <div v-if="renderPages.length === 0" class="wenyan-empty">尚未生成古书渲染，点击“渲染古书”。</div>
             <template v-else>
               <div class="wenyan-render-actions">
-                <button type="button" class="btn btn-outline-primary btn-sm" @click="openRenderModal">弹窗查看（可放大/下载/复制）</button>
+                <button type="button" class="wenyan-tab-btn" @click="openRenderModal">弹窗查看（可放大/下载/复制）</button>
               </div>
               <div class="wenyan-render-page" v-html="renderPages[0]"></div>
             </template>

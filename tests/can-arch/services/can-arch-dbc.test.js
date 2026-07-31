@@ -32,6 +32,22 @@ describe('can-arch-dbc', () => {
     expect(parsed[1].name).toBe('BMS');
   });
 
+  it('marks J1939 profile version when requested', () => {
+    const dbc = serializeNodesToDbc([
+      {
+        name: 'TCU',
+        protocols: [canProtocols.J1939],
+        j1939Addresses: [45],
+        canopenNodeIds: [],
+      },
+    ], {
+      profile: 'j1939',
+    });
+
+    expect(dbc).toContain('VERSION "CAN_ARCH_NODES_J1939_v1"');
+    expect(dbc).toContain('BA_ "NmStationAddress" BU_ TCU 45;');
+  });
+
   it('validates draft values and catches range errors', () => {
     const result = validateCanNodeDraft({
       name: 'Node_A',

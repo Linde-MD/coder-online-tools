@@ -35,7 +35,7 @@
 
             <div v-if="activeTopMenu === 'export'" class="can-top-menu-panel">
               <button class="can-top-menu-item" type="button" @click="runMenuAction(exportArchitectureConfig)">导出架构 JSON</button>
-              <button class="can-top-menu-item" type="button" @click="runMenuAction(exportSelectedNodes)" :disabled="selectedIds.length === 0">导出选中 DBC</button>
+              <button class="can-top-menu-item" type="button" @click="runMenuAction(exportSelectedNodes)" :disabled="!hasAnySelectionForExport">导出选中 DBC</button>
               <button class="can-top-menu-item" type="button" @click="runMenuAction(exportArchitectureSvg)">导出 SVG</button>
               <button class="can-top-menu-item" type="button" @click="runMenuAction(exportArchitecturePng)">导出 PNG</button>
               <label class="can-top-menu-check">
@@ -51,7 +51,6 @@
 
           <div class="can-arch-toolbar can-arch-toolbar-icons">
             <select v-model="activeLinkStyle" class="form-select form-select-sm can-link-style-select" title="连线样式" @change="applyActiveStyleToSelectedLink">
-              <option value="straight">直线</option>
               <option value="polyline">折线（可加锚点）</option>
               <option value="curve">曲线</option>
               <option value="rounded">圆角折线</option>
@@ -142,6 +141,15 @@
                 <svg class="can-link-layer" :width="sceneSize.width" :height="sceneSize.height" aria-hidden="true">
                   <g v-for="link in resolvedLinks" :key="link.id" class="can-link-item">
                     <path
+                      v-if="selectedLinkId === link.id"
+                      class="can-link-path-focus"
+                      :d="link.path"
+                      stroke="#ff8c4a"
+                      stroke-width="9"
+                      stroke-linejoin="round"
+                      fill="none"
+                    />
+                    <path
                       class="can-link-path"
                       :class="{ selected: selectedLinkId === link.id }"
                       :d="link.path"
@@ -150,6 +158,9 @@
                       stroke-width="3"
                       stroke-dasharray="none"
                       fill="none"
+                      @pointerdown.stop.prevent="onLinkPointerDown(link, $event)"
+                      @dblclick.stop.prevent="onLinkDoubleClick(link, $event)"
+                      @contextmenu.stop.prevent="onLinkContextMenu(link, $event)"
                     />
                     <path
                       class="can-link-hit"
@@ -246,6 +257,7 @@
                   @contextmenu.prevent.stop="onBusContextMenu(bus, $event)"
                 >
                   <span class="can-bus-name">{{ bus.name }}</span>
+                  <span class="can-bus-baud">{{ bus.baudRate || DEFAULT_BUS_BAUD }}k</span>
                 </div>
 
                 <div
@@ -296,12 +308,82 @@
 
               <label class="form-label mb-1" for="can-link-style">线型</label>
               <select id="can-link-style" v-model="linkEditor.style" class="form-select form-select-sm">
-                <option value="straight">直线</option>
                 <option value="polyline">折线（可加锚点）</option>
                 <option value="curve">曲线</option>
                 <option value="rounded">圆角折线</option>
                 <option value="orthogonal">直角折线</option>
               </select>
+
+              <div class="mt-2">
+                <div class="form-label mb-1">应用协议</div>
+                <label class="form-check-label d-flex align-items-center gap-2 mb-1">
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    :checked="linkEditor.protocols.includes(canProtocols.GENERIC_STD)"
+                    :disabled="!canLinkUseProtocol(canProtocols.GENERIC_STD) && !linkEditor.protocols.includes(canProtocols.GENERIC_STD)"
+                    @change="toggleLinkEditorProtocol(canProtocols.GENERIC_STD, $event.target.checked)"
+                  >
+                  Generic 标准帧
+                </label>
+                <label class="form-check-label d-flex align-items-center gap-2 mb-1">
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    :checked="linkEditor.protocols.includes(canProtocols.GENERIC_EXT)"
+                    :disabled="!canLinkUseProtocol(canProtocols.GENERIC_EXT) && !linkEditor.protocols.includes(canProtocols.GENERIC_EXT)"
+                    @change="toggleLinkEditorProtocol(canProtocols.GENERIC_EXT, $event.target.checked)"
+                  >
+                  Generic 扩展帧
+                </label>
+                <label class="form-check-label d-flex align-items-center gap-2 mb-1">
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    :checked="linkEditor.protocols.includes(canProtocols.J1939)"
+                    :disabled="!canLinkUseProtocol(canProtocols.J1939) && !linkEditor.protocols.includes(canProtocols.J1939)"
+                    @change="toggleLinkEditorProtocol(canProtocols.J1939, $event.target.checked)"
+                  >
+                  J1939
+                </label>
+                <label class="form-check-label d-flex align-items-center gap-2 mb-1">
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    :checked="linkEditor.protocols.includes(canProtocols.CANOPEN)"
+                    :disabled="!canLinkUseProtocol(canProtocols.CANOPEN) && !linkEditor.protocols.includes(canProtocols.CANOPEN)"
+                    @change="toggleLinkEditorProtocol(canProtocols.CANOPEN, $event.target.checked)"
+                  >
+                  CANopen
+                </label>
+                <div class="can-side-hint p-0 mt-1">
+                  连线协议仅可选择该 ECU 已启用的协议。
+                </div>
+              </div>
+
+              <div class="mt-2" v-if="linkEditor.protocols.includes(canProtocols.J1939)">
+                <label class="form-label mb-1" for="can-link-j1939">J1939 NmStationAddress（多个用逗号分隔）</label>
+                <input
+                  id="can-link-j1939"
+                  v-model="linkEditor.j1939AddressesInput"
+                  class="form-control form-control-sm"
+                  type="text"
+                  :disabled="resolveLinkAllowedJ1939Addresses(singleSelectedLink).length === 0"
+                  :placeholder="`可用: ${resolveLinkAllowedJ1939Addresses(singleSelectedLink).join(', ') || '无'}`"
+                >
+              </div>
+
+              <div class="mt-2" v-if="linkEditor.protocols.includes(canProtocols.CANOPEN)">
+                <label class="form-label mb-1" for="can-link-canopen">CANopen 节点号（多个用逗号分隔）</label>
+                <input
+                  id="can-link-canopen"
+                  v-model="linkEditor.canopenNodeIdsInput"
+                  class="form-control form-control-sm"
+                  type="text"
+                  :disabled="resolveLinkAllowedCanopenNodeIds(singleSelectedLink).length === 0"
+                  :placeholder="`可用: ${resolveLinkAllowedCanopenNodeIds(singleSelectedLink).join(', ') || '无'}`"
+                >
+              </div>
 
               <div class="d-flex gap-2 mt-3 align-items-center">
                 <button class="btn btn-outline-secondary btn-sm" type="button" @click="addAnchorToSelectedLink">添加锚点</button>
@@ -321,7 +403,7 @@
 
               <div class="mt-2">
                 <div class="form-label mb-1">当前总线协议（自动识别）</div>
-                <div v-if="busProtocolsForSelected.length === 0" class="can-side-hint p-0">暂无连接 ECU</div>
+                <div v-if="busProtocolsForSelected.length === 0" class="can-side-hint p-0">暂无连接连线协议</div>
                 <div v-else class="can-node-protocol-groups">
                   <div v-for="proto in busProtocolsForSelected" :key="proto" class="can-protocol-group" :class="protocolRowClass(proto)">
                     <span class="can-pill" :class="protocolBadgeClass(proto)">{{ protocolLabel(proto) }}</span>
@@ -403,7 +485,6 @@
               </div>
 
               <div class="d-flex gap-2 mt-3 align-items-center">
-                <span class="can-draft-auto-hint">已开启自动应用</span>
                 <button class="btn btn-outline-secondary btn-sm" type="button" @click="resetDraft">重置</button>
               </div>
             </div>
@@ -418,7 +499,7 @@
           </aside>
 
           <div class="can-arch-status can-arch-status-floating" :class="{ error: Boolean(statusError) }">
-            {{ statusError || statusMessage }}
+            {{ floatingStatusText }}
           </div>
         </div>
       </div>
@@ -432,7 +513,7 @@
     </div>
 
     <div v-if="importModalOpen" class="can-import-modal" @click.self="closeImportModal">
-      <div class="can-import-card" role="dialog" aria-modal="true" aria-label="DBC 节点导入向导">
+      <div class="can-import-card" role="dialog" aria-modal="true" aria-label="DBC 节点导入向导" @keydown.capture="handleImportModalKeydown">
         <div class="can-import-head">
           <strong>DBC 节点导入向导</strong>
           <button class="btn btn-outline-secondary btn-sm" type="button" @click="closeImportModal">关闭</button>
@@ -450,50 +531,178 @@
 
         <div v-else>
           <p class="can-import-note">
-            识别到 {{ importCandidates.length }} 个 ECU。默认勾选新增项，重名项需确认后再导入。
+            识别到 {{ importCandidates.length }} 个 ECU，当前已选择 {{ importSelectedCount }} 个。
           </p>
 
-          <div class="can-import-list">
-            <div class="can-import-row can-import-row-head">
-              <span>导入</span>
-              <span>ECU 名称</span>
-              <span>协议</span>
-              <span>地址/节点号</span>
-              <span>冲突处理</span>
+          <div class="mb-3 can-import-target-row">
+            <div>
+              <div class="form-label mb-1">导入目标</div>
+              <select v-model="importTarget.connectionMode" class="form-select form-select-sm">
+                <option value="existing" :disabled="buses.length === 0">连接到已有 CAN BUS</option>
+                <option value="new">新建 CAN BUS</option>
+              </select>
             </div>
-            <div
-              v-for="candidate in importCandidates"
-              :key="candidate.id"
-              class="can-import-row"
-            >
-              <span>
-                <input v-model="candidate.selected" class="form-check-input" type="checkbox">
-              </span>
-              <span>{{ candidate.name }}</span>
-              <span>
-                <span v-if="candidate.protocols.length === 0" class="can-pill can-pill-neutral">Generic</span>
-                <span v-for="protocol in candidate.protocols" :key="protocol" class="can-pill" :class="protocolBadgeClass(protocol)">
-                  {{ protocolLabel(protocol) }}
-                </span>
-              </span>
-              <span>
-                <span v-if="candidate.j1939Addresses.length > 0">J1939: {{ candidate.j1939Addresses.join(', ') }}</span>
-                <span v-if="candidate.canopenNodeIds.length > 0" class="d-block">CANopen: {{ candidate.canopenNodeIds.join(', ') }}</span>
-                <span v-if="candidate.j1939Addresses.length === 0 && candidate.canopenNodeIds.length === 0">-</span>
-              </span>
-              <span>
-                <template v-if="candidate.conflict">
-                  <div class="can-form-warning mb-1">同名 ECU 已存在</div>
-                  <input
-                    v-model="candidate.rename"
-                    class="form-control form-control-sm"
-                    type="text"
-                    maxlength="40"
-                    placeholder="重命名后导入"
-                  >
-                </template>
-                <template v-else>新增</template>
-              </span>
+            <div>
+              <div class="form-label mb-1">目标配置</div>
+              <select
+                v-if="importTarget.connectionMode === 'existing'"
+                v-model="importTarget.busId"
+                class="form-select form-select-sm"
+                :disabled="buses.length === 0"
+              >
+                <option v-for="bus in buses" :key="bus.id" :value="bus.id">{{ bus.name }}</option>
+              </select>
+              <input
+                v-else
+                v-model="importTarget.newBusName"
+                class="form-control form-control-sm"
+                type="text"
+                maxlength="32"
+                placeholder="例如：CAN_IMPORT"
+              >
+            </div>
+          </div>
+
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <button class="btn btn-outline-secondary btn-sm" type="button" @click="selectAllImportCandidates">全选（Alt+A）</button>
+            <button class="btn btn-outline-secondary btn-sm" type="button" @click="clearAllImportCandidates">取消全选（Alt+Q）</button>
+          </div>
+
+          <div class="can-import-list">
+            <div class="can-import-group">
+              <button class="can-import-group-head" type="button" @click="toggleImportCandidateGroup('new')">
+                <span>{{ importReviewState.newExpanded ? '▾' : '▸' }} 新增 ECU（{{ newImportCandidates.length }}）</span>
+              </button>
+              <div v-if="importReviewState.newExpanded">
+                <div class="can-import-row can-import-row-head">
+                  <span>导入</span>
+                  <span>ECU 名称</span>
+                  <span>协议</span>
+                  <span>地址/节点号</span>
+                  <span>处理方式</span>
+                </div>
+                <div
+                  v-for="candidate in newImportCandidates"
+                  :key="candidate.id"
+                  class="can-import-row"
+                >
+                  <span>
+                    <input v-model="candidate.selected" class="form-check-input" type="checkbox">
+                  </span>
+                  <span>{{ candidate.name }}</span>
+                  <span>
+                    <span v-if="candidate.protocols.length === 0" class="can-pill can-pill-neutral">Generic</span>
+                    <span v-for="protocol in candidate.protocols" :key="protocol" class="can-pill" :class="protocolBadgeClass(protocol)">
+                      {{ protocolLabel(protocol) }}
+                    </span>
+                  </span>
+                  <span>
+                    <span v-if="candidate.j1939Addresses.length > 0">J1939: {{ candidate.j1939Addresses.join(', ') }}</span>
+                    <span v-if="candidate.canopenNodeIds.length > 0" class="d-block">CANopen: {{ candidate.canopenNodeIds.join(', ') }}</span>
+                    <span v-if="candidate.j1939Addresses.length === 0 && candidate.canopenNodeIds.length === 0">-</span>
+                  </span>
+                  <span>
+                    <label class="form-check-label d-flex align-items-center gap-2 mb-1">
+                      <input
+                        :checked="candidate.resolveMode === 'create'"
+                        class="form-check-input"
+                        type="radio"
+                        :name="`resolve-${candidate.id}`"
+                        @change="setImportCandidateResolveMode(candidate, 'create')"
+                      >
+                      新增 ECU
+                    </label>
+                    <label class="form-check-label d-flex align-items-center gap-2 mb-1">
+                      <input
+                        :checked="candidate.resolveMode === 'merge'"
+                        class="form-check-input"
+                        type="radio"
+                        :name="`resolve-${candidate.id}`"
+                        @change="setImportCandidateResolveMode(candidate, 'merge')"
+                        :disabled="existingNodeNameOptions.length === 0"
+                      >
+                      归并到已有 ECU
+                    </label>
+                    <select
+                      v-if="candidate.resolveMode === 'merge'"
+                      v-model="candidate.mergeNodeName"
+                      class="form-select form-select-sm"
+                      :disabled="existingNodeNameOptions.length === 0"
+                    >
+                      <option v-for="name in existingNodeNameOptions" :key="`existing-new-${candidate.id}-${name}`" :value="name">{{ name }}</option>
+                    </select>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div class="can-import-group mt-2">
+              <button class="can-import-group-head" type="button" @click="toggleImportCandidateGroup('conflict')">
+                <span>{{ importReviewState.conflictExpanded ? '▾' : '▸' }} 同名 ECU（{{ conflictImportCandidates.length }}）</span>
+              </button>
+              <div v-if="importReviewState.conflictExpanded">
+                <div v-if="conflictImportCandidates.length > 0" class="can-form-warning px-2 py-1">
+                  下面 ECU 名称已存在，可选择“同名合并（并集）”或“重命名新建”。
+                </div>
+                <div class="can-import-row can-import-row-head">
+                  <span>导入</span>
+                  <span>ECU 名称</span>
+                  <span>协议</span>
+                  <span>地址/节点号</span>
+                  <span>冲突处理</span>
+                </div>
+                <div
+                  v-for="candidate in conflictImportCandidates"
+                  :key="candidate.id"
+                  class="can-import-row"
+                >
+                  <span>
+                    <input v-model="candidate.selected" class="form-check-input" type="checkbox">
+                  </span>
+                  <span>{{ candidate.name }}</span>
+                  <span>
+                    <span v-if="candidate.protocols.length === 0" class="can-pill can-pill-neutral">Generic</span>
+                    <span v-for="protocol in candidate.protocols" :key="protocol" class="can-pill" :class="protocolBadgeClass(protocol)">
+                      {{ protocolLabel(protocol) }}
+                    </span>
+                  </span>
+                  <span>
+                    <span v-if="candidate.j1939Addresses.length > 0">J1939: {{ candidate.j1939Addresses.join(', ') }}</span>
+                    <span v-if="candidate.canopenNodeIds.length > 0" class="d-block">CANopen: {{ candidate.canopenNodeIds.join(', ') }}</span>
+                    <span v-if="candidate.j1939Addresses.length === 0 && candidate.canopenNodeIds.length === 0">-</span>
+                  </span>
+                  <span>
+                    <label class="form-check-label d-flex align-items-center gap-2 mb-1">
+                      <input
+                        :checked="candidate.resolveMode === 'merge'"
+                        class="form-check-input"
+                        type="radio"
+                        :name="`resolve-${candidate.id}`"
+                        @change="setImportCandidateResolveMode(candidate, 'merge')"
+                      >
+                      同名合并（并集）
+                    </label>
+                    <label class="form-check-label d-flex align-items-center gap-2 mb-1">
+                      <input
+                        :checked="candidate.resolveMode === 'create'"
+                        class="form-check-input"
+                        type="radio"
+                        :name="`resolve-${candidate.id}`"
+                        @change="setImportCandidateResolveMode(candidate, 'create')"
+                      >
+                      重命名新建
+                    </label>
+                    <input
+                      v-if="candidate.resolveMode === 'create'"
+                      v-model="candidate.rename"
+                      class="form-control form-control-sm"
+                      type="text"
+                      maxlength="40"
+                      placeholder="重命名后导入"
+                    >
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -501,6 +710,107 @@
             <button class="btn btn-outline-secondary btn-sm" type="button" @click="closeImportModal">取消</button>
             <button class="btn btn-primary btn-sm" type="button" @click="confirmImportCandidates">确认导入</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="dbcExportModalOpen" class="can-import-modal can-export-modal" @click.self="closeDbcExportModal">
+      <div class="can-import-card can-export-card" role="dialog" aria-modal="true" aria-label="DBC 导出选项">
+        <div class="can-import-head can-export-head">
+          <strong>DBC 导出选项</strong>
+          <button class="btn btn-outline-secondary btn-sm" type="button" @click="closeDbcExportModal">关闭</button>
+        </div>
+
+        <p class="can-import-note can-export-note">
+          <template v-if="pendingDbcExport.busGroups.length > 1">
+            当前选中关联多个 CAN BUS。请勾选要导出的 CAN BUS，系统会按每个 CAN BUS 分别生成 DBC。
+          </template>
+          <template v-else-if="pendingDbcExport.busGroups.length === 1">
+            当前选中关联 1 个 CAN BUS。请按该 BUS 的协议类型确认导出策略。
+          </template>
+          <template v-else>
+            当前选中同时包含 J1939 与其他协议。请选择要导出的 DBC 组。
+          </template>
+        </p>
+
+        <div v-if="pendingDbcExport.busGroups.length > 0" class="can-export-option-list mb-2">
+          <div class="form-label mb-1">选择需要导出的 CAN BUS</div>
+          <div
+            v-for="group in pendingDbcExport.busGroups"
+            :key="`export-bus-${group.busId}`"
+            class="can-export-bus-block mb-2"
+          >
+            <label class="form-check-label d-flex align-items-center gap-2 mb-1 can-export-option-item">
+              <input
+                class="form-check-input can-export-check"
+                type="checkbox"
+                :checked="group.selected"
+                @change="toggleDbcExportBusSelection(group.busId, $event.target.checked)"
+              >
+              {{ group.busName }}（ECU {{ group.nodeCount }}）
+            </label>
+
+            <div v-if="group.selected" class="can-export-bus-protocols ps-4">
+              <label v-if="group.requiresProtocolSelection" class="form-check-label d-flex align-items-center gap-2 mb-1 can-export-option-item">
+                <input
+                  class="form-check-input can-export-check"
+                  type="checkbox"
+                  :checked="group.includeOthers"
+                  @change="toggleDbcExportGroupProtocol(group.busId, 'others', $event.target.checked)"
+                >
+                导出其他协议（{{ group.otherCount }} 个 ECU）
+              </label>
+
+              <div v-if="group.requiresProtocolSelection" class="d-flex align-items-center gap-2 mb-1">
+                <label class="form-check-label d-flex align-items-center gap-2 mb-0 can-export-option-item">
+                  <input
+                    class="form-check-input can-export-check"
+                    type="checkbox"
+                    :checked="group.includeJ1939"
+                    @change="toggleDbcExportGroupProtocol(group.busId, 'j1939', $event.target.checked)"
+                  >
+                  导出 J1939（{{ group.j1939Count }} 个 ECU）
+                </label>
+                <select
+                  v-if="group.includeJ1939"
+                  class="form-select form-select-sm can-export-j1939-select"
+                  :value="group.j1939Mode"
+                  @change="updateDbcExportGroupJ1939Mode(group.busId, $event.target.value)"
+                >
+                  <option value="dedicated">J1939 专用</option>
+                  <option value="downgrade">退化合并</option>
+                </select>
+              </div>
+
+              <div v-else-if="group.hasJ1939" class="d-flex align-items-center gap-2 mb-1">
+                <span class="can-side-hint p-0">仅包含 J1939，导出方式：</span>
+                <select
+                  class="form-select form-select-sm can-export-j1939-select"
+                  :value="group.j1939Mode"
+                  @change="updateDbcExportGroupJ1939Mode(group.busId, $event.target.value)"
+                >
+                  <option value="dedicated">J1939 专用</option>
+                  <option value="downgrade">退化合并</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="can-export-option-list">
+          <label class="form-check-label d-flex align-items-center gap-2 mb-2 can-export-option-item">
+            <input v-if="pendingDbcExport.j1939Count > 0" v-model="dbcExportSelection.includeJ1939" class="form-check-input can-export-check" type="checkbox">
+            导出 J1939 DBC（{{ pendingDbcExport.j1939Count }} 个 ECU）
+          </label>
+          <label class="form-check-label d-flex align-items-center gap-2 mb-2 can-export-option-item">
+            <input v-if="pendingDbcExport.otherCount > 0" v-model="dbcExportSelection.includeOthers" class="form-check-input can-export-check" type="checkbox">
+            导出其他协议 DBC（{{ pendingDbcExport.otherCount }} 个 ECU）
+          </label>
+        </div>
+
+        <div class="d-flex gap-2 mt-3 justify-content-end">
+          <button class="btn btn-outline-secondary btn-sm" type="button" @click="closeDbcExportModal">取消</button>
+          <button class="btn btn-primary btn-sm" type="button" :disabled="!canConfirmDbcExport" @click="confirmDbcExportSelection">确认导出</button>
         </div>
       </div>
     </div>
@@ -522,6 +832,14 @@
       </button>
       <button v-if="contextMenu.target === 'node' || contextMenu.target === 'bus'" class="can-context-menu-item" type="button" @click="copyCurrentSelection">
         复制
+      </button>
+      <button
+        v-if="(contextMenu.target === 'node' || contextMenu.target === 'bus' || contextMenu.target === 'link' || (contextMenu.target === 'canvas' && hasAnySelectionForExport)) && hasAnySelectionForExport"
+        class="can-context-menu-item"
+        type="button"
+        @click="exportSelectedNodesFromContextMenu"
+      >
+        导出选中 DBC
       </button>
       <button v-if="contextMenu.target === 'link' && canAddAnchorInContextMenu" class="can-context-menu-item" type="button" @click="addAnchorAtContextMenu">
         添加锚点
@@ -546,12 +864,51 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { J1939Feature } from '@/features/j1939';
 import { useJ1939ModuleInit } from '@/app/composables/useJ1939ModuleInit.js';
+import { useBusSelection } from '@/features/can-arch/app/composables/useBusSelection.js';
+import { useBoxSelection } from '@/features/can-arch/app/composables/useBoxSelection.js';
+import { useCanvasPan } from '@/features/can-arch/app/composables/useCanvasPan.js';
+import { useImportReview } from '@/features/can-arch/app/composables/useImportReview.js';
 import {
   canProtocols,
   parseDbcNodes,
   serializeNodesToDbc,
   validateCanNodeDraft,
 } from '@/features/can-arch/services/can-arch-dbc.js';
+import {
+  AUTO_SAVE_INTERVAL_MS,
+  BUS_COLOR_POOL,
+  BUS_RADIUS,
+  CONFIG_SCHEMA,
+  CONFIG_VERSION,
+  DEFAULT_BUS_BAUD,
+  DEFAULT_NODE_BASE_COLOR,
+  HISTORY_LIMIT,
+  LINK_STYLE_OPTIONS,
+  NODE_EDGE_LINK_HIT_THRESHOLD,
+  NODE_HEIGHT,
+  NODE_WIDTH,
+  STORAGE_KEY,
+} from '@/features/can-arch/domain/can-arch-constants.js';
+import {
+  buildLinkGeometryPath as geometryBuildLinkGeometryPath,
+  buildOrthogonalPoints as geometryBuildOrthogonalPoints,
+  buildPolylinePath as geometryBuildPolylinePath,
+  buildRoundedOrthogonalPath as geometryBuildRoundedOrthogonalPath,
+  distancePointToSegment as geometryDistancePointToSegment,
+  intersectsBus as geometryIntersectsBus,
+  intersectsNode as geometryIntersectsNode,
+  rectFromPoints as geometryRectFromPoints,
+  resolveBusAnchorFromDirection as geometryResolveBusAnchorFromDirection,
+  resolveModuleAnchorPoint as geometryResolveModuleAnchorPoint,
+  resolveNodeAnchorByEdge as geometryResolveNodeAnchorByEdge,
+  resolveNodeAnchorFromDirection as geometryResolveNodeAnchorFromDirection,
+  resolveNodeEdgeAnchorFromPointer as geometryResolveNodeEdgeAnchorFromPointer,
+} from '@/features/can-arch/domain/can-arch-geometry.js';
+import {
+  normalizeIntegerList as domainNormalizeIntegerList,
+  normalizeLinkStyle as domainNormalizeLinkStyle,
+  normalizeProtocolsList as domainNormalizeProtocolsList,
+} from '@/features/can-arch/domain/can-arch-normalizers.js';
 
 const props = defineProps({
   active: {
@@ -560,22 +917,18 @@ const props = defineProps({
   },
 });
 
-const STORAGE_KEY = 'coderOnlineTools.canArch.nodes.v1';
-const CONFIG_SCHEMA = 'can-arch-config';
-const CONFIG_VERSION = 1;
-const AUTO_SAVE_INTERVAL_MS = 12000;
-const NODE_WIDTH = 150;
-const NODE_HEIGHT = 88;
-const BUS_RADIUS = 38;
-const HISTORY_LIMIT = 80;
-const DEFAULT_NODE_BASE_COLOR = '#d85f3f';
-const DEFAULT_BUS_BAUD = 500;
-const BUS_COLOR_POOL = ['#8e24aa', '#1e88e5', '#43a047', '#fb8c00', '#e53935', '#00897b', '#6d4c41'];
+const SUPPORTED_CAN_PROTOCOLS = [
+  canProtocols.GENERIC_STD,
+  canProtocols.GENERIC_EXT,
+  canProtocols.J1939,
+  canProtocols.CANOPEN,
+];
 
 const nodes = ref([]);
 const buses = ref([]);
 const links = ref([]);
 const selectedIds = ref([]);
+const selectedBusIds = ref([]);
 const selectedBusId = ref('');
 const selectedLinkId = ref('');
 const clipboardPayload = ref(null);
@@ -585,10 +938,32 @@ const canvasRef = ref(null);
 const importInputRef = ref(null);
 const configImportInputRef = ref(null);
 
-const selectionRect = ref(null);
 const importModalOpen = ref(false);
 const importStage = ref('choose');
 const importCandidates = ref([]);
+const importTarget = reactive({
+  connectionMode: 'existing',
+  busId: '',
+  newBusName: '',
+});
+const importReviewState = reactive({
+  newExpanded: true,
+  conflictExpanded: true,
+});
+const dbcExportModalOpen = ref(false);
+const dbcExportSelection = reactive({
+  includeJ1939: true,
+  includeOthers: true,
+  j1939Mode: 'dedicated',
+  selectedBusIds: [],
+});
+const pendingDbcExport = reactive({
+  j1939Nodes: [],
+  otherNodes: [],
+  j1939Count: 0,
+  otherCount: 0,
+  busGroups: [],
+});
 const statusMessage = ref('准备就绪。');
 const statusError = ref('');
 const historyPast = ref([]);
@@ -605,12 +980,11 @@ const contextMenu = ref({
   canvasPoint: null,
 });
 const isFullscreen = ref(false);
-const isCanvasPanning = ref(false);
 const isSideCollapsed = ref(false);
 const canvasZoom = ref(1);
 const canvasHeight = ref(620);
 const activeTopMenu = ref('');
-const activeLinkStyle = ref('straight');
+const activeLinkStyle = ref('polyline');
 const exportPrefs = reactive({
   includeBackground: true,
   autoCrop: true,
@@ -635,7 +1009,10 @@ const busDraft = reactive({
 });
 
 const linkEditor = reactive({
-  style: 'straight',
+  style: 'polyline',
+  protocols: [],
+  j1939AddressesInput: '',
+  canopenNodeIdsInput: '',
 });
 
 const linkHoverNodeEdge = reactive({
@@ -646,9 +1023,7 @@ const linkHoverBusId = ref('');
 const linkDraftTarget = ref(null);
 const linkDraftVersion = ref(0);
 
-let selectionState = null;
 let dragState = null;
-let canvasPanState = null;
 let canvasResizeState = null;
 let busDragState = null;
 let linkDraftState = null;
@@ -668,14 +1043,65 @@ function bumpLinkDraftVersion() {
   linkDraftVersion.value += 1;
 }
 
+const {
+  selectedBusIdSet,
+  setBusSelection,
+  clearBusSelection,
+} = useBusSelection({
+  buses,
+  selectedBusIds,
+  selectedBusId,
+  syncBusDraftFromSelected: () => syncBusDraftFromSelected(),
+});
+
+const {
+  selectionRect,
+  isBoxSelecting,
+  startBoxSelection,
+  stopBoxSelection,
+} = useBoxSelection({
+  nodes,
+  buses,
+  selectedIds,
+  selectedBusIds,
+  setBusSelection,
+  setStatus: (message) => setStatus(message),
+  resolvePointerInCanvas: (event) => resolvePointerInCanvas(event),
+  rectFromPoints: (a, b) => rectFromPoints(a, b),
+  intersectsNode: (rect, node) => intersectsNode(rect, node),
+  intersectsBus: (rect, bus) => intersectsBus(rect, bus),
+  syncBusDraftFromSelected: () => syncBusDraftFromSelected(),
+  syncDraftFromSelected: () => syncDraftFromSelected(),
+});
+
+const {
+  isCanvasPanning,
+  isPanning,
+  startCanvasPan,
+  stopCanvasPan,
+  onCanvasPanPointerCancel,
+  onCanvasPanLostCapture,
+} = useCanvasPan({
+  nodes,
+  buses,
+  links,
+  selectedIds,
+  clearBusSelection,
+  syncDraftFromSelected: () => syncDraftFromSelected(),
+  syncBusDraftFromSelected: () => syncBusDraftFromSelected(),
+  pushHistorySnapshot: () => pushHistorySnapshot(),
+  persistNodes: () => persistNodes(),
+  nowIso: () => nowIso(),
+});
+
 const singleSelectedNode = computed(() => {
   if (selectedIds.value.length !== 1) return null;
   return nodes.value.find((item) => item.id === selectedIds.value[0]) || null;
 });
 
 const singleSelectedBus = computed(() => {
-  if (!selectedBusId.value) return null;
-  return buses.value.find((item) => item.id === selectedBusId.value) || null;
+  if (selectedBusIds.value.length !== 1) return null;
+  return buses.value.find((item) => item.id === selectedBusIds.value[0]) || null;
 });
 
 const singleSelectedLink = computed(() => {
@@ -690,7 +1116,54 @@ const sidePanelTitle = computed(() => {
 });
 
 const hasAnySelectionForDelete = computed(() => {
-  return Boolean(selectedLinkId.value) || selectedIds.value.length > 0 || Boolean(selectedBusId.value);
+  return Boolean(selectedLinkId.value) || selectedIds.value.length > 0 || selectedBusIds.value.length > 0;
+});
+
+const hasAnySelectionForExport = computed(() => {
+  return Boolean(selectedLinkId.value) || selectedIds.value.length > 0 || selectedBusIds.value.length > 0;
+});
+
+const {
+  newImportCandidates,
+  conflictImportCandidates,
+  importSelectedCount,
+  existingNodeNameOptions,
+  resolveCandidateMergeNodeName,
+  setImportCandidateResolveMode,
+  toggleImportCandidateGroup,
+  selectAllImportCandidates,
+  clearAllImportCandidates,
+  handleImportModalKeydown,
+  buildImportCandidatesFromParsed,
+} = useImportReview({
+  importCandidates,
+  importReviewState,
+  nodes,
+  importModalOpen,
+  importStage,
+});
+
+const canConfirmDbcExport = computed(() => {
+  if (pendingDbcExport.busGroups.length > 0) {
+    const selectedGroups = pendingDbcExport.busGroups.filter((group) => group.selected);
+    if (selectedGroups.length === 0) return false;
+    return selectedGroups.every((group) => group.includeJ1939 || group.includeOthers);
+  }
+
+  const canUseJ1939 = pendingDbcExport.j1939Count > 0 && dbcExportSelection.includeJ1939;
+  const canUseOthers = pendingDbcExport.otherCount > 0 && dbcExportSelection.includeOthers;
+  return canUseJ1939 || canUseOthers;
+});
+
+const floatingStatusText = computed(() => {
+  if (statusError.value) return statusError.value;
+  if (selectionRect.value) {
+    const ecuCount = selectedIds.value.length;
+    const busCount = selectedBusIds.value.length;
+    const totalCount = ecuCount + busCount;
+    return `框选中：已选 ${totalCount} 项（ECU ${ecuCount} 个，CAN BUS ${busCount} 个）。`;
+  }
+  return statusMessage.value;
 });
 
 const canAddAnchorInContextMenu = computed(() => {
@@ -712,44 +1185,146 @@ const busProtocolsForSelected = computed(() => {
     const toId = link.toId || link.busId;
     const hit = (fromType === 'bus' && fromId === bus.id) || (toType === 'bus' && toId === bus.id);
     if (!hit) continue;
-    const nodeId = fromType === 'node' ? fromId : (toType === 'node' ? toId : '');
-    const node = nodes.value.find((item) => item.id === nodeId);
-    if (!node) continue;
-    if (Array.isArray(node.protocols) && node.protocols.length > 0) {
-      for (const protocol of node.protocols) {
+    const normalizedLinkProtocols = normalizeProtocolsList(link.protocols);
+    if (normalizedLinkProtocols.length > 0) {
+      for (const protocol of normalizedLinkProtocols) {
         protocolSet.add(protocol);
       }
-    } else {
-      protocolSet.add(canProtocols.GENERIC_STD);
+      continue;
+    }
+
+    // Backward compatibility for old link data without protocol metadata.
+    const nodeId = fromType === 'node' ? fromId : (toType === 'node' ? toId : '');
+    const node = nodes.value.find((item) => item.id === nodeId);
+    for (const protocol of resolveNodeDefaultProtocols(node)) {
+      protocolSet.add(protocol);
     }
   }
   return [...protocolSet];
 });
 
+function normalizeProtocolsList(value) {
+  return domainNormalizeProtocolsList(value, SUPPORTED_CAN_PROTOCOLS);
+}
+
+function normalizeLinkStyle(styleInput) {
+  return domainNormalizeLinkStyle(styleInput, LINK_STYLE_OPTIONS);
+}
+
+function normalizeIntegerList(value) {
+  return domainNormalizeIntegerList(value);
+}
+
+function resolveNodeDefaultProtocols(node) {
+  const normalized = normalizeProtocolsList(node?.protocols);
+  if (normalized.length > 0) return normalized;
+  return [canProtocols.GENERIC_STD];
+}
+
+function resolveLinkDefaultProtocols(link) {
+  const fromType = link?.fromType || 'node';
+  const toType = link?.toType || 'bus';
+  const fromId = link?.fromId || link?.nodeId;
+  const toId = link?.toId || link?.busId;
+  const nodeId = fromType === 'node' ? fromId : (toType === 'node' ? toId : '');
+  const node = nodes.value.find((item) => item.id === nodeId);
+  return resolveNodeDefaultProtocols(node);
+}
+
+function resolveLinkAllowedProtocols(link) {
+  return resolveLinkDefaultProtocols(link);
+}
+
+function resolveNodeDefaultJ1939Addresses(node) {
+  return normalizeIntegerList(node?.j1939Addresses);
+}
+
+function resolveNodeDefaultCanopenNodeIds(node) {
+  return normalizeIntegerList(node?.canopenNodeIds);
+}
+
+function resolveLinkAllowedJ1939Addresses(link) {
+  const fromType = link?.fromType || 'node';
+  const toType = link?.toType || 'bus';
+  const fromId = link?.fromId || link?.nodeId;
+  const toId = link?.toId || link?.busId;
+  const nodeId = fromType === 'node' ? fromId : (toType === 'node' ? toId : '');
+  const node = nodes.value.find((item) => item.id === nodeId);
+  return resolveNodeDefaultJ1939Addresses(node);
+}
+
+function resolveLinkAllowedCanopenNodeIds(link) {
+  const fromType = link?.fromType || 'node';
+  const toType = link?.toType || 'bus';
+  const fromId = link?.fromId || link?.nodeId;
+  const toId = link?.toId || link?.busId;
+  const nodeId = fromType === 'node' ? fromId : (toType === 'node' ? toId : '');
+  const node = nodes.value.find((item) => item.id === nodeId);
+  return resolveNodeDefaultCanopenNodeIds(node);
+}
+
+function normalizeLinkProtocolsByNode(link, protocolsInput) {
+  const allowed = new Set(resolveLinkAllowedProtocols(link));
+  return normalizeProtocolsList(protocolsInput).filter((token) => allowed.has(token));
+}
+
+function normalizeLinkJ1939AddressesByNode(link, protocolsInput, addressesInput) {
+  const protocols = normalizeLinkProtocolsByNode(link, protocolsInput);
+  if (!protocols.includes(canProtocols.J1939)) return [];
+  const allowed = new Set(resolveLinkAllowedJ1939Addresses(link));
+  return normalizeIntegerList(addressesInput).filter((num) => allowed.has(num));
+}
+
+function normalizeLinkCanopenNodeIdsByNode(link, protocolsInput, addressesInput) {
+  const protocols = normalizeLinkProtocolsByNode(link, protocolsInput);
+  if (!protocols.includes(canProtocols.CANOPEN)) return [];
+  const allowed = new Set(resolveLinkAllowedCanopenNodeIds(link));
+  return normalizeIntegerList(addressesInput).filter((num) => allowed.has(num));
+}
+
+function pruneNodeConnectedLinkCapabilities(nodeId, allowedProtocols, allowedJ1939Addresses, allowedCanopenNodeIds) {
+  const allowedSet = new Set(normalizeProtocolsList(allowedProtocols));
+  const allowedJ1939Set = new Set(normalizeIntegerList(allowedJ1939Addresses));
+  const allowedCanopenSet = new Set(normalizeIntegerList(allowedCanopenNodeIds));
+  let changed = false;
+  for (const link of links.value) {
+    const fromType = link.fromType || 'node';
+    const toType = link.toType || 'bus';
+    const fromId = link.fromId || link.nodeId;
+    const toId = link.toId || link.busId;
+    const isConnectedNode = (fromType === 'node' && fromId === nodeId) || (toType === 'node' && toId === nodeId);
+    if (!isConnectedNode) continue;
+
+    const normalized = normalizeProtocolsList(link.protocols);
+    const pruned = normalized.filter((token) => allowedSet.has(token));
+    const normalizedJ1939 = normalizeIntegerList(link.j1939Addresses);
+    const prunedJ1939 = pruned.includes(canProtocols.J1939)
+      ? normalizedJ1939.filter((num) => allowedJ1939Set.has(num))
+      : [];
+    const normalizedCanopen = normalizeIntegerList(link.canopenNodeIds);
+    const prunedCanopen = pruned.includes(canProtocols.CANOPEN)
+      ? normalizedCanopen.filter((num) => allowedCanopenSet.has(num))
+      : [];
+    const protocolChanged = JSON.stringify(normalized) !== JSON.stringify(pruned);
+    const j1939Changed = JSON.stringify(normalizedJ1939) !== JSON.stringify(prunedJ1939);
+    const canopenChanged = JSON.stringify(normalizedCanopen) !== JSON.stringify(prunedCanopen);
+    if (!protocolChanged && !j1939Changed && !canopenChanged) continue;
+    link.protocols = pruned;
+    link.j1939Addresses = prunedJ1939;
+    link.canopenNodeIds = prunedCanopen;
+    changed = true;
+  }
+  return changed;
+}
+
+function canLinkUseProtocol(protocol) {
+  const link = singleSelectedLink.value;
+  if (!link) return true;
+  return resolveLinkAllowedProtocols(link).includes(protocol);
+}
+
 function resolveNodeAnchorByEdge(node, edge, offsetRatio) {
-  const ratio = Math.max(0, Math.min(1, Number.isFinite(Number(offsetRatio)) ? Number(offsetRatio) : 0.5));
-  if (edge === 'left') {
-    return {
-      x: node.position.x,
-      y: node.position.y + Math.round(NODE_HEIGHT * ratio),
-    };
-  }
-  if (edge === 'top') {
-    return {
-      x: node.position.x + Math.round(NODE_WIDTH * ratio),
-      y: node.position.y,
-    };
-  }
-  if (edge === 'bottom') {
-    return {
-      x: node.position.x + Math.round(NODE_WIDTH * ratio),
-      y: node.position.y + NODE_HEIGHT,
-    };
-  }
-  return {
-    x: node.position.x + NODE_WIDTH,
-    y: node.position.y + Math.round(NODE_HEIGHT * ratio),
-  };
+  return geometryResolveNodeAnchorByEdge(node, edge, offsetRatio, NODE_WIDTH, NODE_HEIGHT);
 }
 
 function resolveModuleByRef(type, id) {
@@ -763,190 +1338,130 @@ function resolveModuleByRef(type, id) {
 }
 
 function resolveNodeAnchorFromDirection(node, targetPoint) {
-  const center = {
-    x: node.position.x + NODE_WIDTH / 2,
-    y: node.position.y + NODE_HEIGHT / 2,
-  };
-  const dx = targetPoint.x - center.x;
-  const dy = targetPoint.y - center.y;
-  const absDx = Math.abs(dx);
-  const absDy = Math.abs(dy);
-  if (absDx >= absDy) {
-    const edge = dx >= 0 ? 'right' : 'left';
-    const offset = Math.max(0, Math.min(1, (targetPoint.y - node.position.y) / NODE_HEIGHT));
-    return resolveNodeAnchorByEdge(node, edge, offset);
-  }
-  const edge = dy >= 0 ? 'bottom' : 'top';
-  const offset = Math.max(0, Math.min(1, (targetPoint.x - node.position.x) / NODE_WIDTH));
-  return resolveNodeAnchorByEdge(node, edge, offset);
+  return geometryResolveNodeAnchorFromDirection(node, targetPoint, NODE_WIDTH, NODE_HEIGHT);
 }
 
 function resolveBusAnchorFromDirection(bus, targetPoint) {
-  const cx = bus.position.x + BUS_RADIUS;
-  const cy = bus.position.y + BUS_RADIUS;
-  const dx = targetPoint.x - cx;
-  const dy = targetPoint.y - cy;
-  const length = Math.sqrt(dx * dx + dy * dy) || 1;
-  return {
-    x: cx + (dx / length) * BUS_RADIUS,
-    y: cy + (dy / length) * BUS_RADIUS,
-  };
+  return geometryResolveBusAnchorFromDirection(bus, targetPoint, BUS_RADIUS);
 }
 
 function resolveModuleAnchorPoint(type, module, anchorEdge, anchorOffset, targetPoint) {
-  if (!module) return null;
-  if (type === 'node') {
-    if (['left', 'right', 'top', 'bottom'].includes(anchorEdge)) {
-      return resolveNodeAnchorByEdge(module, anchorEdge, anchorOffset);
-    }
-    return resolveNodeAnchorFromDirection(module, targetPoint);
-  }
-  return resolveBusAnchorFromDirection(module, targetPoint);
+  return geometryResolveModuleAnchorPoint(
+    type,
+    module,
+    anchorEdge,
+    anchorOffset,
+    targetPoint,
+    NODE_WIDTH,
+    NODE_HEIGHT,
+    BUS_RADIUS,
+  );
 }
 
-function buildOrthogonalPoints(start, end) {
-  const midX = (start.x + end.x) / 2;
-  return [
-    { x: start.x, y: start.y },
-    { x: midX, y: start.y },
-    { x: midX, y: end.y },
-    { x: end.x, y: end.y },
-  ];
+function resolveLinkEndpointsForGeometry(link) {
+  const fromType = link?.fromType || 'node';
+  const toType = link?.toType || 'bus';
+  const fromId = link?.fromId || link?.nodeId;
+  const toId = link?.toId || link?.busId;
+  const fromModule = resolveModuleByRef(fromType, fromId);
+  const toModule = resolveModuleByRef(toType, toId);
+  if (!fromModule || !toModule) return null;
+
+  const fromCenter = fromType === 'node'
+    ? { x: fromModule.position.x + NODE_WIDTH / 2, y: fromModule.position.y + NODE_HEIGHT / 2 }
+    : { x: fromModule.position.x + BUS_RADIUS, y: fromModule.position.y + BUS_RADIUS };
+  const toCenter = toType === 'node'
+    ? { x: toModule.position.x + NODE_WIDTH / 2, y: toModule.position.y + NODE_HEIGHT / 2 }
+    : { x: toModule.position.x + BUS_RADIUS, y: toModule.position.y + BUS_RADIUS };
+
+  const start = resolveModuleAnchorPoint(fromType, fromModule, link.fromAnchorEdge, link.fromAnchorOffset, toCenter);
+  const end = resolveModuleAnchorPoint(toType, toModule, link.toAnchorEdge, link.toAnchorOffset, fromCenter);
+  if (!start || !end) return null;
+  return { start, end };
 }
 
-function buildPolylinePath(points) {
-  if (!points || points.length < 2) return '';
-  return `M ${points[0].x} ${points[0].y} ` + points.slice(1).map((p) => `L ${p.x} ${p.y}`).join(' ');
-}
-
-function buildRoundedOrthogonalPath(points, radius = 14) {
-  if (!points || points.length < 2) return '';
-  if (points.length < 3) return buildPolylinePath(points);
-
-  let path = `M ${points[0].x} ${points[0].y}`;
-  for (let i = 1; i < points.length - 1; i += 1) {
-    const a = points[i - 1];
-    const b = points[i];
-    const c = points[i + 1];
-    const ab = { x: b.x - a.x, y: b.y - a.y };
-    const bc = { x: c.x - b.x, y: c.y - b.y };
-    const abLen = Math.sqrt(ab.x * ab.x + ab.y * ab.y) || 1;
-    const bcLen = Math.sqrt(bc.x * bc.x + bc.y * bc.y) || 1;
-    const r = Math.max(0, Math.min(radius, abLen / 2, bcLen / 2));
-    const p1 = { x: b.x - (ab.x / abLen) * r, y: b.y - (ab.y / abLen) * r };
-    const p2 = { x: b.x + (bc.x / bcLen) * r, y: b.y + (bc.y / bcLen) * r };
-    path += ` L ${p1.x} ${p1.y} Q ${b.x} ${b.y} ${p2.x} ${p2.y}`;
-  }
-  const last = points[points.length - 1];
-  path += ` L ${last.x} ${last.y}`;
-  return path;
-}
-
-function buildLinkGeometryPath(style, start, end, anchors) {
-  const cleanAnchors = Array.isArray(anchors)
-    ? anchors
+function ensureControlAnchorsForLink(link) {
+  if (!link) return;
+  const style = normalizeLinkStyle(link.style);
+  if (!['curve', 'rounded', 'orthogonal'].includes(style)) return;
+  const minAnchorCount = style === 'curve' ? 2 : 2;
+  const existingAnchors = Array.isArray(link.anchors)
+    ? link.anchors
       .map((item) => ({ x: Number(item?.x), y: Number(item?.y) }))
       .filter((item) => Number.isFinite(item.x) && Number.isFinite(item.y))
     : [];
-
-  const points = [start, ...cleanAnchors, end];
-
-  if (style === 'curve') {
-    if (cleanAnchors.length === 0) {
-      const dx = end.x - start.x;
-      const control = {
-        x: start.x + dx * 0.5,
-        y: start.y,
-      };
-      return {
-        path: `M ${start.x} ${start.y} Q ${control.x} ${control.y} ${end.x} ${end.y}`,
-        anchors: cleanAnchors,
-      };
-    }
-    let path = `M ${start.x} ${start.y}`;
-    let prev = start;
-    for (let i = 0; i < cleanAnchors.length; i += 1) {
-      const anchor = cleanAnchors[i];
-      const next = i === cleanAnchors.length - 1 ? end : cleanAnchors[i + 1];
-      const mid = {
-        x: (anchor.x + next.x) / 2,
-        y: (anchor.y + next.y) / 2,
-      };
-      if (i === 0) {
-        path += ` Q ${anchor.x} ${anchor.y} ${mid.x} ${mid.y}`;
-      } else {
-        path += ` T ${mid.x} ${mid.y}`;
-      }
-      prev = mid;
-    }
-    if (prev.x !== end.x || prev.y !== end.y) {
-      path += ` T ${end.x} ${end.y}`;
-    }
-    return {
-      path,
-      anchors: cleanAnchors,
-    };
+  if (existingAnchors.length >= minAnchorCount) {
+    link.anchors = existingAnchors;
+    return;
   }
 
-  if (style === 'polyline') {
-    return {
-      path: buildPolylinePath(points),
-      anchors: cleanAnchors,
-    };
-  }
-
-  if (style === 'orthogonal') {
-    if (cleanAnchors.length === 0) {
-      const orthoPoints = buildOrthogonalPoints(start, end);
-      return {
-        path: buildPolylinePath(orthoPoints),
-        anchors: [],
-      };
-    }
-    const orthoPoints = [start];
-    for (let i = 0; i < cleanAnchors.length; i += 1) {
-      const a = cleanAnchors[i];
-      const p = orthoPoints[orthoPoints.length - 1];
-      orthoPoints.push({ x: a.x, y: p.y });
-      orthoPoints.push({ x: a.x, y: a.y });
-    }
-    const last = orthoPoints[orthoPoints.length - 1];
-    orthoPoints.push({ x: end.x, y: last.y });
-    orthoPoints.push({ x: end.x, y: end.y });
-    return {
-      path: buildPolylinePath(orthoPoints),
-      anchors: cleanAnchors,
-    };
-  }
-
-  if (style === 'rounded') {
-    if (cleanAnchors.length === 0) {
-      const orthoPoints = buildOrthogonalPoints(start, end);
-      return {
-        path: buildRoundedOrthogonalPath(orthoPoints),
-        anchors: [],
-      };
-    }
-    const orthoPoints = [start];
-    for (let i = 0; i < cleanAnchors.length; i += 1) {
-      const a = cleanAnchors[i];
-      const p = orthoPoints[orthoPoints.length - 1];
-      orthoPoints.push({ x: a.x, y: p.y });
-      orthoPoints.push({ x: a.x, y: a.y });
-    }
-    const last = orthoPoints[orthoPoints.length - 1];
-    orthoPoints.push({ x: end.x, y: last.y });
-    orthoPoints.push({ x: end.x, y: end.y });
-    return {
-      path: buildRoundedOrthogonalPath(orthoPoints),
-      anchors: cleanAnchors,
-    };
-  }
-
-  return {
-    path: `M ${start.x} ${start.y} L ${end.x} ${end.y}`,
-    anchors: [],
+  const endpoints = resolveLinkEndpointsForGeometry(link);
+  if (!endpoints) return;
+  const sx = endpoints.start.x;
+  const sy = endpoints.start.y;
+  const ex = endpoints.end.x;
+  const ey = endpoints.end.y;
+  const dx = ex - sx;
+  const dy = ey - sy;
+  const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+  const unitPerp = {
+    x: -dy / distance,
+    y: dx / distance,
   };
+  const curveLift = Math.max(16, Math.min(44, distance * 0.15));
+
+  const defaults = [];
+  if (style === 'curve') {
+    defaults.push(
+      {
+        x: Math.round(sx + dx * 0.33 + unitPerp.x * curveLift),
+        y: Math.round(sy + dy * 0.33 + unitPerp.y * curveLift),
+      },
+      {
+        x: Math.round(sx + dx * 0.67 - unitPerp.x * curveLift),
+        y: Math.round(sy + dy * 0.67 - unitPerp.y * curveLift),
+      },
+    );
+  } else {
+    defaults.push(
+      {
+        x: Math.round(sx + dx * 0.33),
+        y: Math.round(sy + dy * 0.33),
+      },
+      {
+        x: Math.round(sx + dx * 0.67),
+        y: Math.round(sy + dy * 0.67),
+      },
+    );
+  }
+
+  const nextAnchors = [...existingAnchors];
+  let fallbackIndex = 0;
+  while (nextAnchors.length < minAnchorCount) {
+    const fallback = defaults[Math.min(fallbackIndex, defaults.length - 1)] || {
+      x: Math.round((sx + ex) / 2),
+      y: Math.round((sy + ey) / 2),
+    };
+    nextAnchors.push({ ...fallback });
+    fallbackIndex += 1;
+  }
+  link.anchors = nextAnchors;
+}
+
+function buildOrthogonalPoints(start, end) {
+  return geometryBuildOrthogonalPoints(start, end);
+}
+
+function buildPolylinePath(points) {
+  return geometryBuildPolylinePath(points);
+}
+
+function buildRoundedOrthogonalPath(points, radius = 14) {
+  return geometryBuildRoundedOrthogonalPath(points, radius);
+}
+
+function buildLinkGeometryPath(style, start, end, anchors) {
+  return geometryBuildLinkGeometryPath(style, start, end, anchors, normalizeLinkStyle);
 }
 
 const resolvedLinks = computed(() => {
@@ -971,9 +1486,7 @@ const resolvedLinks = computed(() => {
     const end = resolveModuleAnchorPoint(toType, toModule, link.toAnchorEdge, link.toAnchorOffset, fromCenter);
     if (!start || !end) continue;
 
-    const style = ['straight', 'polyline', 'curve', 'rounded', 'orthogonal'].includes(link.style)
-      ? link.style
-      : 'straight';
+    const style = normalizeLinkStyle(link.style);
     const rendered = buildLinkGeometryPath(style, start, end, link.anchors);
     const busColor = fromType === 'bus'
       ? normalizeBusColor(fromModule.color, BUS_COLOR_POOL[0])
@@ -1026,9 +1539,7 @@ function nodeLinkDots(node) {
 const linkDraft = computed(() => {
   linkDraftVersion.value;
   if (!linkDraftState) return null;
-  const draftStyle = ['straight', 'polyline', 'curve', 'rounded', 'orthogonal'].includes(activeLinkStyle.value)
-    ? activeLinkStyle.value
-    : 'straight';
+  const draftStyle = normalizeLinkStyle(activeLinkStyle.value);
   const rendered = buildLinkGeometryPath(draftStyle, linkDraftState.start, linkDraftState.current, []);
   return {
     start: linkDraftState.start,
@@ -1252,7 +1763,7 @@ function nodeCardClasses(node) {
 
 function busCardClasses(bus) {
   return {
-    selected: selectedBusId.value === bus.id,
+    selected: selectedBusIdSet.value.has(bus.id),
     'link-rim-hot': linkHoverBusId.value === bus.id,
     'link-drop-target': linkDraftTarget.value?.type === 'bus' && linkDraftTarget.value?.id === bus.id,
   };
@@ -1386,18 +1897,14 @@ function setSelectedLinkStyle(styleInput, options = {}) {
   if (!selectedLinkId.value) return;
   const target = links.value.find((item) => item.id === selectedLinkId.value);
   if (!target) return;
-  const style = ['straight', 'polyline', 'curve', 'rounded', 'orthogonal'].includes(styleInput)
-    ? styleInput
-    : 'straight';
+  const style = normalizeLinkStyle(styleInput);
   if (target.style === style) return;
   if (linkEditorHistoryLinkId !== target.id) {
     pushHistorySnapshot();
     linkEditorHistoryLinkId = target.id;
   }
   target.style = style;
-  if (style !== 'polyline') {
-    target.anchors = [];
-  }
+  ensureControlAnchorsForLink(target);
   if (options.updateToolbar !== false) {
     activeLinkStyle.value = style;
   }
@@ -1407,20 +1914,63 @@ function setSelectedLinkStyle(styleInput, options = {}) {
   }
 }
 
+function setSelectedLinkProtocols(protocolsInput, options = {}) {
+  if (!selectedLinkId.value) return;
+  const target = links.value.find((item) => item.id === selectedLinkId.value);
+  if (!target) return;
+
+  const normalized = normalizeLinkProtocolsByNode(target, protocolsInput);
+  const normalizedJ1939 = normalizeLinkJ1939AddressesByNode(target, normalized, target.j1939Addresses);
+  const normalizedCanopen = normalizeLinkCanopenNodeIdsByNode(target, normalized, target.canopenNodeIds);
+  const sameProtocols = JSON.stringify(normalizeProtocolsList(target.protocols)) === JSON.stringify(normalized);
+  const sameJ1939 = JSON.stringify(normalizeIntegerList(target.j1939Addresses)) === JSON.stringify(normalizedJ1939);
+  const sameCanopen = JSON.stringify(normalizeIntegerList(target.canopenNodeIds)) === JSON.stringify(normalizedCanopen);
+  if (sameProtocols && sameJ1939 && sameCanopen) {
+    return;
+  }
+
+  if (linkEditorHistoryLinkId !== target.id) {
+    pushHistorySnapshot();
+    linkEditorHistoryLinkId = target.id;
+  }
+
+  target.protocols = [...normalized];
+  target.j1939Addresses = [...normalizedJ1939];
+  target.canopenNodeIds = [...normalizedCanopen];
+  persistNodes();
+  if (options.showStatus !== false) {
+    setStatus('已更新连线协议。');
+  }
+}
+
+function setSelectedLinkAddresses(j1939AddressesInput, canopenNodeIdsInput, options = {}) {
+  if (!selectedLinkId.value) return;
+  const target = links.value.find((item) => item.id === selectedLinkId.value);
+  if (!target) return;
+
+  const normalizedJ1939 = normalizeLinkJ1939AddressesByNode(target, target.protocols, j1939AddressesInput);
+  const normalizedCanopen = normalizeLinkCanopenNodeIdsByNode(target, target.protocols, canopenNodeIdsInput);
+  const sameJ1939 = JSON.stringify(normalizeIntegerList(target.j1939Addresses)) === JSON.stringify(normalizedJ1939);
+  const sameCanopen = JSON.stringify(normalizeIntegerList(target.canopenNodeIds)) === JSON.stringify(normalizedCanopen);
+  if (sameJ1939 && sameCanopen) {
+    return;
+  }
+
+  if (linkEditorHistoryLinkId !== target.id) {
+    pushHistorySnapshot();
+    linkEditorHistoryLinkId = target.id;
+  }
+
+  target.j1939Addresses = [...normalizedJ1939];
+  target.canopenNodeIds = [...normalizedCanopen];
+  persistNodes();
+  if (options.showStatus !== false) {
+    setStatus('已更新连线地址。');
+  }
+}
+
 function distancePointToSegment(point, a, b) {
-  const abx = b.x - a.x;
-  const aby = b.y - a.y;
-  const apx = point.x - a.x;
-  const apy = point.y - a.y;
-  const ab2 = abx * abx + aby * aby || 1;
-  const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / ab2));
-  const proj = { x: a.x + abx * t, y: a.y + aby * t };
-  const dx = point.x - proj.x;
-  const dy = point.y - proj.y;
-  return {
-    dist: Math.sqrt(dx * dx + dy * dy),
-    t,
-  };
+  return geometryDistancePointToSegment(point, a, b);
 }
 
 function addAnchorToLink(linkId, point) {
@@ -1463,7 +2013,7 @@ function addAnchorToLink(linkId, point) {
 function onLinkPointerDown(link, event) {
   selectedLinkId.value = link.id;
   selectedIds.value = [];
-  selectedBusId.value = '';
+  clearBusSelection({ sync: false });
   syncDraftFromSelected();
   syncBusDraftFromSelected();
   syncLinkEditorFromSelected();
@@ -1583,7 +2133,7 @@ function addAnchorToSelectedLink() {
 
 function copyCurrentSelection() {
   const nodeSet = new Set(selectedIds.value);
-  const busSet = new Set(selectedBusId.value ? [selectedBusId.value] : []);
+  const busSet = new Set(selectedBusIds.value);
 
   if (nodeSet.size === 0 && busSet.size === 0) {
     setStatus('请先选中一个或多个模块再复制。', true);
@@ -1682,7 +2232,10 @@ function pasteClipboard(point = null) {
       fromAnchorOffset: Number.isFinite(Number(sourceLink.fromAnchorOffset)) ? Number(sourceLink.fromAnchorOffset) : (Number.isFinite(Number(sourceLink.anchorOffset)) ? Number(sourceLink.anchorOffset) : 0.5),
       toAnchorEdge: sourceLink.toAnchorEdge || 'auto',
       toAnchorOffset: Number.isFinite(Number(sourceLink.toAnchorOffset)) ? Number(sourceLink.toAnchorOffset) : 0.5,
-      style: ['straight', 'polyline', 'curve', 'rounded', 'orthogonal'].includes(sourceLink.style) ? sourceLink.style : 'straight',
+      style: normalizeLinkStyle(sourceLink.style),
+      protocols: normalizeProtocolsList(sourceLink.protocols),
+      j1939Addresses: normalizeIntegerList(sourceLink.j1939Addresses),
+      canopenNodeIds: normalizeIntegerList(sourceLink.canopenNodeIds),
       anchors: Array.isArray(sourceLink.anchors) ? sourceLink.anchors.map((item) => ({ x: Number(item?.x), y: Number(item?.y) })).filter((item) => Number.isFinite(item.x) && Number.isFinite(item.y)) : [],
     });
   }
@@ -2020,7 +2573,7 @@ async function handleConfigFileChosen(event) {
     buses.value = hydrateBuses(incoming.buses);
     links.value = hydrateLinks(incoming.links, nodes.value, buses.value);
     selectedIds.value = [];
-    selectedBusId.value = '';
+    clearBusSelection({ sync: false });
     selectedLinkId.value = '';
     syncDraftFromSelected();
     syncBusDraftFromSelected();
@@ -2091,7 +2644,10 @@ function cloneLinksSnapshot(source) {
     fromAnchorOffset: Number.isFinite(Number(item?.fromAnchorOffset)) ? Number(item.fromAnchorOffset) : (Number.isFinite(Number(item?.anchorOffset)) ? Number(item.anchorOffset) : 0.5),
     toAnchorEdge: ['left', 'right', 'top', 'bottom'].includes(item?.toAnchorEdge) ? item.toAnchorEdge : 'auto',
     toAnchorOffset: Number.isFinite(Number(item?.toAnchorOffset)) ? Number(item.toAnchorOffset) : 0.5,
-    style: ['straight', 'polyline', 'curve', 'rounded', 'orthogonal'].includes(item?.style) ? item.style : 'straight',
+    style: normalizeLinkStyle(item?.style),
+    protocols: normalizeProtocolsList(item?.protocols),
+    j1939Addresses: normalizeIntegerList(item?.j1939Addresses),
+    canopenNodeIds: normalizeIntegerList(item?.canopenNodeIds),
     anchors: Array.isArray(item?.anchors)
       ? item.anchors
         .map((anchor) => ({ x: Number(anchor?.x), y: Number(anchor?.y) }))
@@ -2123,7 +2679,7 @@ function applyHistoryState(snapshot, statusText) {
   buses.value = hydrateBuses(snapshot?.buses || []);
   links.value = hydrateLinks(snapshot?.links || [], nodes.value, buses.value);
   selectedIds.value = [];
-  selectedBusId.value = '';
+  clearBusSelection({ sync: false });
   selectedLinkId.value = '';
   syncDraftFromSelected();
   syncBusDraftFromSelected();
@@ -2195,25 +2751,32 @@ function hydrateLinks(rawLinks, sourceNodes, sourceBuses) {
   const busIdSet = new Set((sourceBuses || []).map((item) => item.id));
   const seen = new Set();
   return (Array.isArray(rawLinks) ? rawLinks : [])
-    .map((item) => ({
-      id: String(item?.id || crypto.randomUUID()),
-      fromType: item?.fromType === 'bus' ? 'bus' : 'node',
-      fromId: String(item?.fromId || item?.nodeId || ''),
-      toType: item?.toType === 'node' ? 'node' : 'bus',
-      toId: String(item?.toId || item?.busId || ''),
-      fromAnchorEdge: ['left', 'right', 'top', 'bottom'].includes(item?.fromAnchorEdge)
-        ? item.fromAnchorEdge
-        : (['left', 'right', 'top', 'bottom'].includes(item?.anchorEdge) ? item.anchorEdge : 'auto'),
-      fromAnchorOffset: Number.isFinite(Number(item?.fromAnchorOffset)) ? Number(item.fromAnchorOffset) : (Number.isFinite(Number(item?.anchorOffset)) ? Number(item.anchorOffset) : 0.5),
-      toAnchorEdge: ['left', 'right', 'top', 'bottom'].includes(item?.toAnchorEdge) ? item.toAnchorEdge : 'auto',
-      toAnchorOffset: Number.isFinite(Number(item?.toAnchorOffset)) ? Number(item.toAnchorOffset) : 0.5,
-      style: ['straight', 'polyline', 'curve', 'rounded', 'orthogonal'].includes(item?.style) ? item.style : 'straight',
-      anchors: Array.isArray(item?.anchors)
-        ? item.anchors
-          .map((anchor) => ({ x: Number(anchor?.x), y: Number(anchor?.y) }))
-          .filter((anchor) => Number.isFinite(anchor.x) && Number.isFinite(anchor.y))
-        : [],
-    }))
+    .map((item) => {
+      const normalized = {
+        id: String(item?.id || crypto.randomUUID()),
+        fromType: item?.fromType === 'bus' ? 'bus' : 'node',
+        fromId: String(item?.fromId || item?.nodeId || ''),
+        toType: item?.toType === 'node' ? 'node' : 'bus',
+        toId: String(item?.toId || item?.busId || ''),
+        fromAnchorEdge: ['left', 'right', 'top', 'bottom'].includes(item?.fromAnchorEdge)
+          ? item.fromAnchorEdge
+          : (['left', 'right', 'top', 'bottom'].includes(item?.anchorEdge) ? item.anchorEdge : 'auto'),
+        fromAnchorOffset: Number.isFinite(Number(item?.fromAnchorOffset)) ? Number(item.fromAnchorOffset) : (Number.isFinite(Number(item?.anchorOffset)) ? Number(item.anchorOffset) : 0.5),
+        toAnchorEdge: ['left', 'right', 'top', 'bottom'].includes(item?.toAnchorEdge) ? item.toAnchorEdge : 'auto',
+        toAnchorOffset: Number.isFinite(Number(item?.toAnchorOffset)) ? Number(item.toAnchorOffset) : 0.5,
+        style: normalizeLinkStyle(item?.style),
+        protocols: normalizeProtocolsList(item?.protocols),
+        j1939Addresses: normalizeIntegerList(item?.j1939Addresses),
+        canopenNodeIds: normalizeIntegerList(item?.canopenNodeIds),
+        anchors: Array.isArray(item?.anchors)
+          ? item.anchors
+            .map((anchor) => ({ x: Number(anchor?.x), y: Number(anchor?.y) }))
+            .filter((anchor) => Number.isFinite(anchor.x) && Number.isFinite(anchor.y))
+          : [],
+      };
+      ensureControlAnchorsForLink(normalized);
+      return normalized;
+    })
     .filter((item) => {
       const isNodeBusPair = (item.fromType === 'node' && item.toType === 'bus') || (item.fromType === 'bus' && item.toType === 'node');
       if (!isNodeBusPair) return false;
@@ -2292,7 +2855,7 @@ function openCanvasContextMenu(event) {
 
 function onNodeContextMenu(node, event) {
   selectedLinkId.value = '';
-  selectedBusId.value = '';
+  clearBusSelection({ sync: false });
   syncBusDraftFromSelected();
   if (!selectedIds.value.includes(node.id)) {
     selectedIds.value = [node.id];
@@ -2375,28 +2938,46 @@ function syncLinkEditorFromSelected() {
   linkEditorHistoryLinkId = null;
   const link = singleSelectedLink.value;
   if (!link) {
-    linkEditor.style = 'straight';
+    linkEditor.style = 'polyline';
+    linkEditor.protocols = [];
+    linkEditor.j1939AddressesInput = '';
+    linkEditor.canopenNodeIdsInput = '';
     isSyncingLinkEditor = false;
     return;
   }
-  const style = ['straight', 'polyline', 'curve', 'rounded', 'orthogonal'].includes(link.style)
-    ? link.style
-    : 'straight';
+  const style = normalizeLinkStyle(link.style);
+  ensureControlAnchorsForLink(link);
+  const protocols = normalizeLinkProtocolsByNode(link, link.protocols);
+  const j1939Addresses = normalizeLinkJ1939AddressesByNode(link, protocols, link.j1939Addresses);
+  const canopenNodeIds = normalizeLinkCanopenNodeIdsByNode(link, protocols, link.canopenNodeIds);
   linkEditor.style = style;
+  linkEditor.protocols = protocols.length > 0 ? [...protocols] : resolveLinkDefaultProtocols(link);
+  linkEditor.j1939AddressesInput = j1939Addresses.join(', ');
+  linkEditor.canopenNodeIdsInput = canopenNodeIds.join(', ');
   activeLinkStyle.value = style;
   isSyncingLinkEditor = false;
 }
 
+function toggleLinkEditorProtocol(protocol, checked) {
+  if (checked) {
+    if (!linkEditor.protocols.includes(protocol)) {
+      linkEditor.protocols = [...linkEditor.protocols, protocol];
+    }
+    return;
+  }
+  linkEditor.protocols = linkEditor.protocols.filter((token) => token !== protocol);
+}
+
 function selectOnly(nodeId) {
   selectedIds.value = [nodeId];
-  selectedBusId.value = '';
+  clearBusSelection({ sync: false });
   selectedLinkId.value = '';
   syncBusDraftFromSelected();
   syncDraftFromSelected();
 }
 
 function selectBusOnly(busId) {
-  selectedBusId.value = busId;
+  setBusSelection([busId], { sync: false });
   selectedIds.value = [];
   selectedLinkId.value = '';
   syncDraftFromSelected();
@@ -2506,9 +3087,11 @@ function toggleFullscreen() {
   closeContextMenu();
 }
 
-function deleteSelectedNodes() {
+function deleteSelectedNodes(options = {}) {
   if (selectedIds.value.length === 0) return;
-  pushHistorySnapshot();
+  if (!options.skipHistory) {
+    pushHistorySnapshot();
+  }
   const selected = new Set(selectedIds.value);
   nodes.value = nodes.value.filter((node) => !selected.has(node.id));
   links.value = links.value.filter((item) => {
@@ -2521,34 +3104,40 @@ function deleteSelectedNodes() {
     return true;
   });
   selectedIds.value = [];
-  selectedBusId.value = '';
+  clearBusSelection({ sync: false });
   selectedLinkId.value = '';
   syncDraftFromSelected();
   syncBusDraftFromSelected();
   persistNodes();
-  setStatus('已删除选中节点。');
+  if (options.skipStatus !== true) {
+    setStatus('已删除选中节点。');
+  }
   closeContextMenu();
 }
 
-function deleteSelectedBus() {
-  if (!selectedBusId.value) return;
-  pushHistorySnapshot();
-  const busId = selectedBusId.value;
-  buses.value = buses.value.filter((item) => item.id !== busId);
+function deleteSelectedBus(options = {}) {
+  if (selectedBusIds.value.length === 0) return;
+  if (!options.skipHistory) {
+    pushHistorySnapshot();
+  }
+  const busIdSet = new Set(selectedBusIds.value);
+  buses.value = buses.value.filter((item) => !busIdSet.has(item.id));
   links.value = links.value.filter((item) => {
     const fromType = item.fromType || 'node';
     const toType = item.toType || 'bus';
     const fromId = item.fromId || item.nodeId;
     const toId = item.toId || item.busId;
-    if (fromType === 'bus' && fromId === busId) return false;
-    if (toType === 'bus' && toId === busId) return false;
+    if (fromType === 'bus' && busIdSet.has(fromId)) return false;
+    if (toType === 'bus' && busIdSet.has(toId)) return false;
     return true;
   });
-  selectedBusId.value = '';
+  clearBusSelection({ sync: false });
   selectedLinkId.value = '';
   syncBusDraftFromSelected();
   persistNodes();
-  setStatus('已删除 CAN BUS。');
+  if (options.skipStatus !== true) {
+    setStatus('已删除选中 CAN BUS。');
+  }
   closeContextMenu();
 }
 
@@ -2557,13 +3146,20 @@ function deleteSelected() {
     deleteSelectedLink();
     return;
   }
-  if (selectedIds.value.length > 0) {
-    deleteSelectedNodes();
-    return;
+
+  const hasNodeSelection = selectedIds.value.length > 0;
+  const busIdsToDelete = [...selectedBusIds.value];
+  if (!hasNodeSelection && busIdsToDelete.length === 0) return;
+
+  pushHistorySnapshot();
+  if (hasNodeSelection) {
+    deleteSelectedNodes({ skipHistory: true, skipStatus: true });
   }
-  if (selectedBusId.value) {
-    deleteSelectedBus();
+  if (busIdsToDelete.length > 0) {
+    setBusSelection(busIdsToDelete, { sync: false });
+    deleteSelectedBus({ skipHistory: true, skipStatus: true });
   }
+  setStatus('已删除选中对象。');
 }
 
 function connectModules(fromRef, toRef, options = {}) {
@@ -2586,9 +3182,17 @@ function connectModules(fromRef, toRef, options = {}) {
   const fromOffset = Number.isFinite(Number(options?.fromAnchor?.offset)) ? Math.max(0, Math.min(1, Number(options.fromAnchor.offset))) : 0.5;
   const toEdge = ['left', 'right', 'top', 'bottom'].includes(options?.toAnchor?.edge) ? options.toAnchor.edge : 'auto';
   const toOffset = Number.isFinite(Number(options?.toAnchor?.offset)) ? Math.max(0, Math.min(1, Number(options.toAnchor.offset))) : 0.5;
-  const style = ['straight', 'polyline', 'curve', 'rounded', 'orthogonal'].includes(options?.style)
-    ? options.style
-    : activeLinkStyle.value;
+  const style = normalizeLinkStyle(options?.style || activeLinkStyle.value);
+  const sourceNode = fromRef.type === 'node'
+    ? nodes.value.find((item) => item.id === fromRef.id)
+    : nodes.value.find((item) => item.id === toRef.id);
+  const defaultProtocols = resolveNodeDefaultProtocols(sourceNode);
+  const defaultJ1939Addresses = defaultProtocols.includes(canProtocols.J1939)
+    ? resolveNodeDefaultJ1939Addresses(sourceNode)
+    : [];
+  const defaultCanopenNodeIds = defaultProtocols.includes(canProtocols.CANOPEN)
+    ? resolveNodeDefaultCanopenNodeIds(sourceNode)
+    : [];
 
   links.value.push({
     id: crypto.randomUUID(),
@@ -2601,8 +3205,12 @@ function connectModules(fromRef, toRef, options = {}) {
     toAnchorEdge: toEdge,
     toAnchorOffset: toOffset,
     style,
+    protocols: [...defaultProtocols],
+    j1939Addresses: [...defaultJ1939Addresses],
+    canopenNodeIds: [...defaultCanopenNodeIds],
     anchors: [],
   });
+  ensureControlAnchorsForLink(links.value[links.value.length - 1]);
   persistNodes();
   return true;
 }
@@ -2675,6 +3283,14 @@ function applyDraftToSelectedNode(manual = false) {
   target.baseColor = normalizedBaseColor;
   target.updatedAt = nowIso();
 
+  // ECU能力减少时，连线只做删减，不会补充新增协议或地址。
+  pruneNodeConnectedLinkCapabilities(
+    target.id,
+    result.normalized.protocols,
+    result.normalized.j1939Addresses,
+    result.normalized.canopenNodeIds
+  );
+
   persistNodes();
   if (manual) {
     setStatus(`已保存节点 ${target.name}`);
@@ -2746,35 +3362,13 @@ function resolvePointerInCanvas(event) {
 }
 
 function resolveNodeEdgeAnchorFromPointer(node, pointer) {
-  if (!pointer) return null;
-  const localX = pointer.x - node.position.x;
-  const localY = pointer.y - node.position.y;
-  if (localX < 0 || localY < 0 || localX > NODE_WIDTH || localY > NODE_HEIGHT) return null;
-
-  const edgeThreshold = 26;
-  const distances = [
-    { edge: 'left', dist: localX },
-    { edge: 'right', dist: NODE_WIDTH - localX },
-    { edge: 'top', dist: localY },
-    { edge: 'bottom', dist: NODE_HEIGHT - localY },
-  ].sort((a, b) => a.dist - b.dist);
-
-  const nearest = distances[0];
-  if (!nearest || nearest.dist > edgeThreshold) return null;
-
-  if (nearest.edge === 'left' || nearest.edge === 'right') {
-    return {
-      edge: nearest.edge,
-      offset: Math.max(0, Math.min(1, localY / NODE_HEIGHT)),
-      point: resolveNodeAnchorByEdge(node, nearest.edge, localY / NODE_HEIGHT),
-    };
-  }
-
-  return {
-    edge: nearest.edge,
-    offset: Math.max(0, Math.min(1, localX / NODE_WIDTH)),
-    point: resolveNodeAnchorByEdge(node, nearest.edge, localX / NODE_WIDTH),
-  };
+  return geometryResolveNodeEdgeAnchorFromPointer(
+    node,
+    pointer,
+    NODE_WIDTH,
+    NODE_HEIGHT,
+    NODE_EDGE_LINK_HIT_THRESHOLD,
+  );
 }
 
 function onNodeLinkPointerDown(node, event, edgeAnchor = null) {
@@ -2928,8 +3522,8 @@ function onNodePointerDown(node, event) {
   linkHoverBusId.value = '';
   linkDraftTarget.value = null;
   selectedLinkId.value = '';
-  if (selectedBusId.value) {
-    selectedBusId.value = '';
+  if (selectedBusIds.value.length > 0) {
+    clearBusSelection({ sync: false });
     syncBusDraftFromSelected();
   }
 
@@ -3082,7 +3676,7 @@ function onBusPointerDown(bus, event) {
   const rimAnchor = resolveBusRimAnchorFromPointer(bus, pointerPoint);
   if (rimAnchor) {
     selectedIds.value = [];
-    selectedBusId.value = bus.id;
+    setBusSelection([bus.id], { sync: false });
     selectedLinkId.value = '';
     syncDraftFromSelected();
     syncBusDraftFromSelected();
@@ -3103,6 +3697,19 @@ function onBusPointerDown(bus, event) {
     window.addEventListener('pointerup', onNodeLinkPointerUp);
     document.addEventListener('pointermove', onNodeLinkPointerMove);
     document.addEventListener('pointerup', onNodeLinkPointerUp);
+    return;
+  }
+
+  const additive = event.ctrlKey || event.metaKey;
+  if (additive) {
+    const next = selectedBusIdSet.value.has(bus.id)
+      ? selectedBusIds.value.filter((id) => id !== bus.id)
+      : [...selectedBusIds.value, bus.id];
+    setBusSelection(next, { sync: false });
+    selectedIds.value = [];
+    selectedLinkId.value = '';
+    syncDraftFromSelected();
+    syncBusDraftFromSelected();
     return;
   }
 
@@ -3200,7 +3807,9 @@ function onBusLostPointerCapture(event) {
 }
 
 function onBusContextMenu(bus, event) {
-  selectBusOnly(bus.id);
+  if (!selectedBusIdSet.value.has(bus.id)) {
+    selectBusOnly(bus.id);
+  }
   const point = resolvePointerInCanvas(event);
   openContextMenuAt(event.clientX, event.clientY, 'bus', bus.id, point);
   setStatus(`已打开 CAN BUS 右键菜单：${bus.name}`);
@@ -3248,40 +3857,27 @@ function onDragPointerCancel() {
 }
 
 function rectFromPoints(a, b) {
-  const left = Math.min(a.x, b.x);
-  const top = Math.min(a.y, b.y);
-  const width = Math.abs(a.x - b.x);
-  const height = Math.abs(a.y - b.y);
-  return { left, top, width, height };
+  return geometryRectFromPoints(a, b);
 }
 
 function intersectsNode(rect, node) {
-  const nodeRect = {
-    left: node.position.x,
-    top: node.position.y,
-    right: node.position.x + NODE_WIDTH,
-    bottom: node.position.y + NODE_HEIGHT,
-  };
+  return geometryIntersectsNode(rect, node, NODE_WIDTH, NODE_HEIGHT);
+}
 
-  const selRect = {
-    left: rect.left,
-    top: rect.top,
-    right: rect.left + rect.width,
-    bottom: rect.top + rect.height,
-  };
-
-  return !(
-    nodeRect.right < selRect.left ||
-    nodeRect.left > selRect.right ||
-    nodeRect.bottom < selRect.top ||
-    nodeRect.top > selRect.bottom
-  );
+function intersectsBus(rect, bus) {
+  return geometryIntersectsBus(rect, bus, BUS_RADIUS);
 }
 
 function onCanvasPointerDown(event) {
-  if (selectionState || canvasPanState) return;
+  if (isBoxSelecting.value || isPanning()) return;
   if (event.button !== 0) return;
-  if (event.target?.closest?.('.can-node-item') || event.target?.closest?.('.can-bus-item')) return;
+  if (
+    event.target?.closest?.('.can-node-item') ||
+    event.target?.closest?.('.can-bus-item') ||
+    event.target?.closest?.('.can-link-hit') ||
+    event.target?.closest?.('.can-link-path') ||
+    event.target?.closest?.('.can-link-anchor')
+  ) return;
 
   const canvasElement = canvasRef.value;
   if (!canvasElement) return;
@@ -3295,130 +3891,11 @@ function onCanvasPointerDown(event) {
   linkDraftTarget.value = null;
 
   if (event.shiftKey) {
-    const additive = event.ctrlKey || event.metaKey;
-    const start = resolvePointerInCanvas(event);
-    if (!start) return;
-
-    if (!additive) {
-      selectedIds.value = [];
-      selectedBusId.value = '';
-      syncBusDraftFromSelected();
-      syncDraftFromSelected();
-    }
-
-    selectionState = {
-      additive,
-      start,
-      baseline: new Set(selectedIds.value),
-    };
-
-    selectionRect.value = { left: start.x, top: start.y, width: 0, height: 0 };
-
-    window.addEventListener('pointermove', onSelectionPointerMove);
-    window.addEventListener('pointerup', onSelectionPointerUp);
-    document.addEventListener('pointermove', onSelectionPointerMove);
-    document.addEventListener('pointerup', onSelectionPointerUp);
+    startBoxSelection(event);
     return;
   }
 
-  canvasPanState = {
-    pointerId: event.pointerId,
-    startClientX: event.clientX,
-    startClientY: event.clientY,
-    startMap: new Map(nodes.value.map((item) => [item.id, { x: item.position.x, y: item.position.y }])),
-    busStartMap: new Map(buses.value.map((item) => [item.id, { x: item.position.x, y: item.position.y }])),
-    linkAnchorStartMap: new Map(links.value.map((item) => [
-      item.id,
-      Array.isArray(item.anchors)
-        ? item.anchors.map((anchor) => ({ x: Number(anchor?.x) || 0, y: Number(anchor?.y) || 0 }))
-        : [],
-    ])),
-    moved: false,
-    historyCaptured: false,
-    keepSelection: event.ctrlKey || event.metaKey,
-    pointerTarget: event.currentTarget,
-  };
-
-  isCanvasPanning.value = true;
-  event.currentTarget?.setPointerCapture?.(event.pointerId);
-  window.addEventListener('pointermove', onCanvasPanPointerMove);
-  window.addEventListener('pointerup', onCanvasPanPointerUp);
-  document.addEventListener('pointermove', onCanvasPanPointerMove);
-  document.addEventListener('pointerup', onCanvasPanPointerUp);
-}
-
-function onCanvasPanPointerMove(event) {
-  if (!canvasPanState) return;
-  if (canvasPanState.pointerId !== event.pointerId) return;
-
-  const dx = event.clientX - canvasPanState.startClientX;
-  const dy = event.clientY - canvasPanState.startClientY;
-  if (!canvasPanState.moved && (Math.abs(dx) > 2 || Math.abs(dy) > 2)) {
-    canvasPanState.moved = true;
-  }
-
-  if (canvasPanState.moved && !canvasPanState.historyCaptured) {
-    pushHistorySnapshot();
-    canvasPanState.historyCaptured = true;
-  }
-
-  for (const node of nodes.value) {
-    const start = canvasPanState.startMap.get(node.id);
-    if (!start) continue;
-    node.position.x = Math.round(start.x + dx);
-    node.position.y = Math.round(start.y + dy);
-    node.updatedAt = nowIso();
-  }
-  for (const bus of buses.value) {
-    const start = canvasPanState.busStartMap.get(bus.id);
-    if (!start) continue;
-    bus.position.x = Math.round(start.x + dx);
-    bus.position.y = Math.round(start.y + dy);
-  }
-  for (const link of links.value) {
-    if (!Array.isArray(link.anchors) || link.anchors.length === 0) continue;
-    const startAnchors = canvasPanState.linkAnchorStartMap.get(link.id) || [];
-    link.anchors = startAnchors.map((anchor) => ({
-      x: Math.round(anchor.x + dx),
-      y: Math.round(anchor.y + dy),
-    }));
-  }
-}
-
-function onCanvasPanPointerUp(event) {
-  if (!canvasPanState) return;
-  if (event && canvasPanState.pointerId !== event.pointerId) return;
-
-  const hadMoved = canvasPanState.moved;
-  const keepSelection = canvasPanState.keepSelection;
-  canvasPanState.pointerTarget?.releasePointerCapture?.(canvasPanState.pointerId);
-  canvasPanState = null;
-  isCanvasPanning.value = false;
-  window.removeEventListener('pointermove', onCanvasPanPointerMove);
-  window.removeEventListener('pointerup', onCanvasPanPointerUp);
-  document.removeEventListener('pointermove', onCanvasPanPointerMove);
-  document.removeEventListener('pointerup', onCanvasPanPointerUp);
-
-  if (!hadMoved && !keepSelection) {
-    selectedIds.value = [];
-    selectedBusId.value = '';
-    syncDraftFromSelected();
-    syncBusDraftFromSelected();
-    return;
-  }
-
-  if (hadMoved) {
-    persistNodes();
-  }
-}
-
-function onCanvasPanPointerCancel() {
-  onCanvasPanPointerUp();
-}
-
-function onCanvasPanLostCapture(event) {
-  if (!canvasPanState || canvasPanState.pointerId !== event.pointerId) return;
-  onCanvasPanPointerUp();
+  startCanvasPan(event);
 }
 
 function onCanvasPointerUp(event) {
@@ -3434,41 +3911,6 @@ function onCanvasLostPointerCapture(event) {
 
 function onCanvasPointerCancel() {
   onCanvasPanPointerCancel();
-}
-
-function onSelectionPointerMove(event) {
-  if (!selectionState) return;
-  const point = resolvePointerInCanvas(event);
-  if (!point) return;
-
-  const rect = rectFromPoints(selectionState.start, point);
-  selectionRect.value = rect;
-
-  const hitIds = nodes.value
-    .filter((node) => intersectsNode(rect, node))
-    .map((node) => node.id);
-
-  if (selectionState.additive) {
-    const merged = new Set(selectionState.baseline);
-    for (const id of hitIds) merged.add(id);
-    selectedIds.value = [...merged];
-  } else {
-    selectedIds.value = hitIds;
-  }
-}
-
-function onSelectionPointerUp() {
-  selectionState = null;
-  selectionRect.value = null;
-  if (selectedIds.value.length > 0) {
-    selectedBusId.value = '';
-    syncBusDraftFromSelected();
-  }
-  syncDraftFromSelected();
-  window.removeEventListener('pointermove', onSelectionPointerMove);
-  window.removeEventListener('pointerup', onSelectionPointerUp);
-  document.removeEventListener('pointermove', onSelectionPointerMove);
-  document.removeEventListener('pointerup', onSelectionPointerUp);
 }
 
 function onDocumentContextMenuCapture(event) {
@@ -3533,9 +3975,514 @@ function onDocumentContextMenuCapture(event) {
   openCanvasContextMenu(event);
 }
 
-function buildExportNodes() {
-  const selected = new Set(selectedIds.value);
-  return nodes.value.filter((node) => selected.has(node.id));
+function resolveLinkNodeId(link) {
+  const fromType = link?.fromType || 'node';
+  const toType = link?.toType || 'bus';
+  const fromId = link?.fromId || link?.nodeId;
+  const toId = link?.toId || link?.busId;
+  if (fromType === 'node') return fromId;
+  if (toType === 'node') return toId;
+  return '';
+}
+
+function resolveLinkBusId(link) {
+  const fromType = link?.fromType || 'node';
+  const toType = link?.toType || 'bus';
+  const fromId = link?.fromId || link?.nodeId;
+  const toId = link?.toId || link?.busId;
+  if (fromType === 'bus') return fromId;
+  if (toType === 'bus') return toId;
+  return '';
+}
+
+function mergeProjection(map, node, protocolsInput, j1939Input, canopenInput) {
+  if (!node?.id) return;
+  if (!map.has(node.id)) {
+    map.set(node.id, {
+      node,
+      protocols: new Set(),
+      j1939Addresses: new Set(),
+      canopenNodeIds: new Set(),
+    });
+  }
+
+  const entry = map.get(node.id);
+  const protocols = normalizeProtocolsList(protocolsInput);
+  const j1939Addresses = normalizeIntegerList(j1939Input);
+  const canopenNodeIds = normalizeIntegerList(canopenInput);
+  for (const protocol of protocols) {
+    entry.protocols.add(protocol);
+  }
+  for (const address of j1939Addresses) {
+    entry.j1939Addresses.add(address);
+  }
+  for (const nodeId of canopenNodeIds) {
+    entry.canopenNodeIds.add(nodeId);
+  }
+}
+
+function buildProjectionFromNode(map, node) {
+  if (!node) return;
+  const protocols = resolveNodeDefaultProtocols(node);
+  const j1939Addresses = protocols.includes(canProtocols.J1939)
+    ? resolveNodeDefaultJ1939Addresses(node)
+    : [];
+  const canopenNodeIds = protocols.includes(canProtocols.CANOPEN)
+    ? resolveNodeDefaultCanopenNodeIds(node)
+    : [];
+  mergeProjection(map, node, protocols, j1939Addresses, canopenNodeIds);
+}
+
+function buildProjectionFromLink(map, link) {
+  if (!link) return;
+  const nodeId = resolveLinkNodeId(link);
+  if (!nodeId) return;
+  const node = nodes.value.find((item) => item.id === nodeId);
+  if (!node) return;
+
+  const storedProtocols = normalizeProtocolsList(link.protocols);
+  const protocols = storedProtocols.length > 0
+    ? normalizeLinkProtocolsByNode(link, storedProtocols)
+    : resolveLinkDefaultProtocols(link);
+
+  let j1939Addresses = normalizeLinkJ1939AddressesByNode(link, protocols, link.j1939Addresses);
+  let canopenNodeIds = normalizeLinkCanopenNodeIdsByNode(link, protocols, link.canopenNodeIds);
+
+  if (storedProtocols.length === 0 && protocols.includes(canProtocols.J1939) && j1939Addresses.length === 0) {
+    j1939Addresses = resolveLinkAllowedJ1939Addresses(link);
+  }
+  if (storedProtocols.length === 0 && protocols.includes(canProtocols.CANOPEN) && canopenNodeIds.length === 0) {
+    canopenNodeIds = resolveLinkAllowedCanopenNodeIds(link);
+  }
+
+  mergeProjection(map, node, protocols, j1939Addresses, canopenNodeIds);
+}
+
+function finalizeProjectionMap(projections) {
+  return [...projections.values()].map((entry) => {
+    const protocols = [...entry.protocols];
+    const finalProtocols = protocols.length > 0 ? protocols : [canProtocols.GENERIC_STD];
+    const includesJ1939 = finalProtocols.includes(canProtocols.J1939);
+    const includesCanopen = finalProtocols.includes(canProtocols.CANOPEN);
+    return {
+      ...entry.node,
+      protocols: finalProtocols,
+      j1939Addresses: includesJ1939 ? [...entry.j1939Addresses] : [],
+      canopenNodeIds: includesCanopen ? [...entry.canopenNodeIds] : [],
+    };
+  });
+}
+
+function buildExportNodeProjections() {
+  const projections = new Map();
+  const selectedNodeSet = new Set(selectedIds.value);
+  for (const node of nodes.value) {
+    if (!selectedNodeSet.has(node.id)) continue;
+    buildProjectionFromNode(projections, node);
+  }
+
+  if (selectedLinkId.value) {
+    const link = links.value.find((item) => item.id === selectedLinkId.value);
+    buildProjectionFromLink(projections, link);
+  }
+
+  if (selectedBusIds.value.length > 0) {
+    const busSet = new Set(selectedBusIds.value);
+    for (const link of links.value) {
+      if (!busSet.has(resolveLinkBusId(link))) continue;
+      buildProjectionFromLink(projections, link);
+    }
+  }
+
+  return finalizeProjectionMap(projections);
+}
+
+function collectExportCandidateBusIds() {
+  const busSet = new Set();
+  const ordered = [];
+  const pushBusId = (busId) => {
+    if (!busId || busSet.has(busId)) return;
+    if (!buses.value.find((item) => item.id === busId)) return;
+    busSet.add(busId);
+    ordered.push(busId);
+  };
+
+  for (const busId of selectedBusIds.value) {
+    pushBusId(busId);
+  }
+
+  if (selectedLinkId.value) {
+    const link = links.value.find((item) => item.id === selectedLinkId.value);
+    pushBusId(resolveLinkBusId(link));
+  }
+
+  if (selectedIds.value.length > 0) {
+    const selectedNodeSet = new Set(selectedIds.value);
+    for (const link of links.value) {
+      const nodeId = resolveLinkNodeId(link);
+      if (!selectedNodeSet.has(nodeId)) continue;
+      pushBusId(resolveLinkBusId(link));
+    }
+  }
+
+  return ordered;
+}
+
+function buildExportNodeProjectionsForBus(busId) {
+  if (!busId) return [];
+  const projections = new Map();
+  const selectedNodeSet = new Set(selectedIds.value);
+  const selectedBusSet = new Set(selectedBusIds.value);
+  const selectedLink = selectedLinkId.value
+    ? links.value.find((item) => item.id === selectedLinkId.value)
+    : null;
+
+  for (const link of links.value) {
+    const linkBusId = resolveLinkBusId(link);
+    if (linkBusId !== busId) continue;
+    const linkNodeId = resolveLinkNodeId(link);
+    const fromSelectedBus = selectedBusSet.has(busId);
+    const fromSelectedNode = selectedNodeSet.has(linkNodeId);
+    const fromSelectedLink = Boolean(selectedLink && selectedLink.id === link.id);
+    if (!fromSelectedBus && !fromSelectedNode && !fromSelectedLink) continue;
+    buildProjectionFromLink(projections, link);
+  }
+
+  for (const node of nodes.value) {
+    if (!selectedNodeSet.has(node.id)) continue;
+    const touchesBus = links.value.some((link) => resolveLinkNodeId(link) === node.id && resolveLinkBusId(link) === busId);
+    if (!touchesBus) continue;
+    if (!projections.has(node.id)) {
+      buildProjectionFromNode(projections, node);
+    }
+  }
+
+  return finalizeProjectionMap(projections);
+}
+
+function buildDbcExportBusGroups() {
+  const busIds = collectExportCandidateBusIds();
+  const groups = [];
+
+  for (const busId of busIds) {
+    const bus = buses.value.find((item) => item.id === busId);
+    if (!bus) continue;
+    const exportNodes = buildExportNodeProjectionsForBus(busId);
+    if (exportNodes.length === 0) continue;
+    const { j1939Nodes, otherNodes } = splitExportNodesByProtocol(exportNodes);
+    groups.push({
+      busId,
+      busName: bus.name,
+      exportNodes,
+      j1939Nodes,
+      otherNodes,
+      nodeCount: exportNodes.length,
+      j1939Count: j1939Nodes.length,
+      otherCount: otherNodes.length,
+      hasJ1939: j1939Nodes.length > 0,
+      hasOthers: otherNodes.length > 0,
+      requiresProtocolSelection: j1939Nodes.length > 0 && otherNodes.length > 0,
+      selected: true,
+      includeJ1939: j1939Nodes.length > 0,
+      includeOthers: otherNodes.length > 0,
+      j1939Mode: 'dedicated',
+    });
+  }
+
+  return groups;
+}
+
+function syncPendingDbcExportCountsByBusSelection() {
+  if (pendingDbcExport.busGroups.length === 0) return;
+  const j1939NodeIds = new Set();
+  const otherNodeIds = new Set();
+  for (const group of pendingDbcExport.busGroups) {
+    if (!group.selected) continue;
+    if (group.includeJ1939) {
+      for (const node of group.j1939Nodes) {
+        j1939NodeIds.add(node.id);
+      }
+    }
+    if (group.includeOthers) {
+      for (const node of group.otherNodes) {
+        otherNodeIds.add(node.id);
+      }
+    }
+  }
+  pendingDbcExport.j1939Count = j1939NodeIds.size;
+  pendingDbcExport.otherCount = otherNodeIds.size;
+}
+
+function toggleDbcExportBusSelection(busId, checked) {
+  const group = pendingDbcExport.busGroups.find((item) => item.busId === busId);
+  if (!group) return;
+  group.selected = checked;
+  if (!checked) {
+    group.includeJ1939 = false;
+    group.includeOthers = false;
+  } else {
+    group.includeJ1939 = group.hasJ1939;
+    group.includeOthers = group.hasOthers;
+  }
+  syncPendingDbcExportCountsByBusSelection();
+}
+
+function toggleDbcExportGroupProtocol(busId, protocol, checked) {
+  const group = pendingDbcExport.busGroups.find((item) => item.busId === busId);
+  if (!group) return;
+  if (!group.requiresProtocolSelection) return;
+  if (protocol === 'j1939') {
+    group.includeJ1939 = checked && group.hasJ1939;
+  } else {
+    group.includeOthers = checked && group.hasOthers;
+  }
+  syncPendingDbcExportCountsByBusSelection();
+}
+
+function updateDbcExportGroupJ1939Mode(busId, mode) {
+  const group = pendingDbcExport.busGroups.find((item) => item.busId === busId);
+  if (!group) return;
+  group.j1939Mode = mode === 'downgrade' ? 'downgrade' : 'dedicated';
+}
+
+function sanitizeFilenamePart(value) {
+  const normalized = String(value || '')
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, '-')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return normalized || 'bus';
+}
+
+function splitExportNodesByProtocol(nodesForExport) {
+  const j1939Nodes = [];
+  const otherNodes = [];
+
+  for (const node of nodesForExport) {
+    const protocols = normalizeProtocolsList(node.protocols);
+    const hasJ1939 = protocols.includes(canProtocols.J1939);
+    const otherProtocols = protocols.filter((token) => token !== canProtocols.J1939);
+
+    if (hasJ1939) {
+      j1939Nodes.push({
+        ...node,
+        protocols: [canProtocols.J1939],
+        j1939Addresses: normalizeIntegerList(node.j1939Addresses),
+        canopenNodeIds: [],
+      });
+    }
+
+    if (otherProtocols.length > 0 || !hasJ1939) {
+      const protocolsForOthers = otherProtocols.length > 0 ? otherProtocols : [canProtocols.GENERIC_STD];
+      otherNodes.push({
+        ...node,
+        protocols: protocolsForOthers,
+        j1939Addresses: [],
+        canopenNodeIds: protocolsForOthers.includes(canProtocols.CANOPEN)
+          ? normalizeIntegerList(node.canopenNodeIds)
+          : [],
+      });
+    }
+  }
+
+  return {
+    j1939Nodes,
+    otherNodes,
+  };
+}
+
+function resetPendingDbcExport() {
+  pendingDbcExport.j1939Nodes = [];
+  pendingDbcExport.otherNodes = [];
+  pendingDbcExport.j1939Count = 0;
+  pendingDbcExport.otherCount = 0;
+  pendingDbcExport.busGroups = [];
+}
+
+function closeDbcExportModal() {
+  dbcExportModalOpen.value = false;
+  dbcExportSelection.includeJ1939 = true;
+  dbcExportSelection.includeOthers = true;
+  dbcExportSelection.j1939Mode = 'dedicated';
+  dbcExportSelection.selectedBusIds = [];
+  resetPendingDbcExport();
+}
+
+function downgradeJ1939NodesToStandard(nodesInput) {
+  const list = Array.isArray(nodesInput) ? nodesInput : [];
+  return list.map((node) => ({
+    ...node,
+    protocols: [canProtocols.GENERIC_EXT],
+    j1939Addresses: [],
+    canopenNodeIds: [],
+  }));
+}
+
+function mergeStandardExportNodes(baseNodes, addonNodes) {
+  const merged = new Map();
+  const pushNode = (node) => {
+    if (!node?.id) return;
+    if (!merged.has(node.id)) {
+      merged.set(node.id, {
+        ...node,
+        protocols: normalizeProtocolsList(node.protocols),
+        j1939Addresses: [],
+        canopenNodeIds: normalizeIntegerList(node.canopenNodeIds),
+      });
+      return;
+    }
+    const current = merged.get(node.id);
+    current.protocols = [...new Set([
+      ...normalizeProtocolsList(current.protocols),
+      ...normalizeProtocolsList(node.protocols),
+    ])];
+    current.canopenNodeIds = [...new Set([
+      ...normalizeIntegerList(current.canopenNodeIds),
+      ...normalizeIntegerList(node.canopenNodeIds),
+    ])];
+  };
+
+  for (const node of Array.isArray(baseNodes) ? baseNodes : []) {
+    pushNode(node);
+  }
+  for (const node of Array.isArray(addonNodes) ? addonNodes : []) {
+    pushNode(node);
+  }
+  return [...merged.values()].map((node) => ({
+    ...node,
+    protocols: node.protocols.length > 0 ? node.protocols : [canProtocols.GENERIC_STD],
+  }));
+}
+
+function executeDbcExport(j1939Nodes, otherNodes, options = {}) {
+  const includeJ1939 = options.includeJ1939 !== false;
+  const includeOthers = options.includeOthers !== false;
+  const j1939Mode = options.j1939Mode === 'downgrade' ? 'downgrade' : 'dedicated';
+  const silentStatus = options.silentStatus === true;
+  const dateTag = options.dateTag || new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  const filenameBase = options.filenameBase || `can-arch-nodes-${dateTag}`;
+  const canExportJ1939 = includeJ1939 && j1939Nodes.length > 0;
+  const canExportOthers = includeOthers && otherNodes.length > 0;
+  if (!canExportJ1939 && !canExportOthers) {
+    if (!silentStatus) {
+      setStatus('请至少选择一种协议导出。', true);
+    }
+    return null;
+  }
+
+  let exportedFiles = 0;
+
+  if (canExportJ1939 && j1939Mode === 'downgrade') {
+    const downgradedJ1939Nodes = downgradeJ1939NodesToStandard(j1939Nodes);
+    const mergedNodes = mergeStandardExportNodes(
+      canExportOthers ? otherNodes : [],
+      downgradedJ1939Nodes,
+    );
+    const dbc = serializeNodesToDbc(mergedNodes, { profile: 'standard' });
+    downloadTextFile(`${filenameBase}.dbc`, dbc);
+    exportedFiles = 1;
+    const mergedNodeCount = new Set(mergedNodes.map((item) => item.id)).size;
+    if (!silentStatus) {
+      setStatus(`已导出 1 个普通 DBC 文件（J1939 已退化），覆盖 ${mergedNodeCount} 个 ECU。`);
+    }
+    return {
+      exportedFiles,
+      exportedNodeIds: [...new Set(mergedNodes.map((item) => item.id))],
+    };
+  }
+
+  const hasBothDedicated = canExportJ1939 && canExportOthers;
+  if (canExportJ1939) {
+    const dbc = serializeNodesToDbc(j1939Nodes, { profile: 'j1939' });
+    const filename = hasBothDedicated
+      ? `${filenameBase}-j1939.dbc`
+      : `${filenameBase}.dbc`;
+    downloadTextFile(filename, dbc);
+    exportedFiles += 1;
+  }
+
+  if (canExportOthers) {
+    const dbc = serializeNodesToDbc(otherNodes, { profile: 'standard' });
+    const filename = hasBothDedicated
+      ? `${filenameBase}-other.dbc`
+      : `${filenameBase}.dbc`;
+    downloadTextFile(filename, dbc);
+    exportedFiles += 1;
+  }
+
+  const exportedNodes = new Set([
+    ...j1939Nodes.map((item) => item.id),
+    ...otherNodes.map((item) => item.id),
+  ]).size;
+  if (!silentStatus) {
+    setStatus(`已导出 ${exportedFiles} 个 DBC 文件，覆盖 ${exportedNodes} 个 ECU。`);
+  }
+  return {
+    exportedFiles,
+    exportedNodeIds: [...new Set([
+      ...j1939Nodes.map((item) => item.id),
+      ...otherNodes.map((item) => item.id),
+    ])],
+  };
+}
+
+function confirmDbcExportSelection() {
+  if (pendingDbcExport.busGroups.length > 0) {
+    const selectedGroups = pendingDbcExport.busGroups.filter((group) => group.selected);
+    if (selectedGroups.length === 0) {
+      setStatus('请至少勾选一个 CAN BUS 导出。', true);
+      return;
+    }
+
+    const invalidGroup = selectedGroups.find((group) => !group.includeJ1939 && !group.includeOthers);
+    if (invalidGroup) {
+      setStatus(`CAN BUS ${invalidGroup.busName} 未选择导出协议，请先选择协议或取消该 BUS。`, true);
+      return;
+    }
+
+    const dateTag = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    let exportedFiles = 0;
+    const exportedNodeIds = new Set();
+    for (const group of selectedGroups) {
+      if (!group.includeJ1939 && !group.includeOthers) continue;
+      const filenameBase = `can-arch-${sanitizeFilenamePart(group.busName)}-${dateTag}`;
+      const result = executeDbcExport(group.j1939Nodes, group.otherNodes, {
+        includeJ1939: group.includeJ1939,
+        includeOthers: group.includeOthers,
+        j1939Mode: group.j1939Mode,
+        silentStatus: true,
+        filenameBase,
+        dateTag,
+      });
+      if (!result) continue;
+      exportedFiles += result.exportedFiles;
+      for (const nodeId of result.exportedNodeIds) {
+        exportedNodeIds.add(nodeId);
+      }
+    }
+
+    if (exportedFiles === 0) {
+      setStatus('勾选的 CAN BUS 在当前协议组合下没有可导出内容。', true);
+      return;
+    }
+
+    setStatus(`已按 ${selectedGroups.length} 个 CAN BUS 导出 ${exportedFiles} 个 DBC 文件，覆盖 ${exportedNodeIds.size} 个 ECU。`);
+    closeDbcExportModal();
+    return;
+  }
+
+  const result = executeDbcExport(
+    pendingDbcExport.j1939Nodes,
+    pendingDbcExport.otherNodes,
+    {
+      includeJ1939: dbcExportSelection.includeJ1939,
+      includeOthers: dbcExportSelection.includeOthers,
+      j1939Mode: dbcExportSelection.j1939Mode,
+    }
+  );
+  if (!result) return;
+  closeDbcExportModal();
 }
 
 function downloadTextFile(filename, content) {
@@ -3550,17 +4497,67 @@ function downloadTextFile(filename, content) {
   URL.revokeObjectURL(url);
 }
 
+function exportSelectedNodesFromContextMenu() {
+  closeContextMenu();
+  exportSelectedNodes();
+}
+
 function exportSelectedNodes() {
-  const exportNodes = buildExportNodes();
-  if (exportNodes.length === 0) {
-    setStatus('请先选中至少一个节点再导出。', true);
+  const busGroups = buildDbcExportBusGroups();
+  if (busGroups.length > 1) {
+    pendingDbcExport.busGroups = busGroups;
+    pendingDbcExport.j1939Nodes = [];
+    pendingDbcExport.otherNodes = [];
+    dbcExportSelection.selectedBusIds = busGroups.map((group) => group.busId);
+    dbcExportSelection.includeJ1939 = true;
+    dbcExportSelection.includeOthers = true;
+    dbcExportSelection.j1939Mode = 'dedicated';
+    syncPendingDbcExportCountsByBusSelection();
+    dbcExportModalOpen.value = true;
     return;
   }
 
-  const dbc = serializeNodesToDbc(exportNodes);
-  const dateTag = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-  downloadTextFile(`can-arch-nodes-${dateTag}.dbc`, dbc);
-  setStatus(`已导出 ${exportNodes.length} 个节点。`);
+  if (busGroups.length === 1) {
+    const [group] = busGroups;
+    if (group.hasJ1939) {
+      pendingDbcExport.busGroups = busGroups;
+      pendingDbcExport.j1939Nodes = [];
+      pendingDbcExport.otherNodes = [];
+      dbcExportSelection.selectedBusIds = [group.busId];
+      dbcExportSelection.includeJ1939 = true;
+      dbcExportSelection.includeOthers = group.hasOthers;
+      dbcExportSelection.j1939Mode = group.j1939Mode;
+      syncPendingDbcExportCountsByBusSelection();
+      dbcExportModalOpen.value = true;
+      return;
+    }
+  }
+
+  const exportNodes = buildExportNodeProjections();
+  if (exportNodes.length === 0) {
+    setStatus('请先选中至少一个 ECU、CAN BUS 或连线再导出。', true);
+    return;
+  }
+
+  const { j1939Nodes, otherNodes } = splitExportNodesByProtocol(exportNodes);
+  pendingDbcExport.busGroups = [];
+  if (j1939Nodes.length > 0 && otherNodes.length > 0) {
+    pendingDbcExport.j1939Nodes = j1939Nodes;
+    pendingDbcExport.otherNodes = otherNodes;
+    pendingDbcExport.j1939Count = j1939Nodes.length;
+    pendingDbcExport.otherCount = otherNodes.length;
+    dbcExportSelection.includeJ1939 = true;
+    dbcExportSelection.includeOthers = true;
+    dbcExportSelection.j1939Mode = 'dedicated';
+    dbcExportModalOpen.value = true;
+    return;
+  }
+
+  executeDbcExport(j1939Nodes, otherNodes, {
+    includeJ1939: true,
+    includeOthers: true,
+    j1939Mode: 'dedicated',
+  });
 }
 
 function openImportPicker() {
@@ -3570,6 +4567,11 @@ function openImportPicker() {
 function triggerImportDialog() {
   importStage.value = 'choose';
   importCandidates.value = [];
+  importTarget.connectionMode = buses.value.length > 0 ? 'existing' : 'new';
+  importTarget.busId = selectedBusIds.value[0] || selectedBusId.value || buses.value[0]?.id || '';
+  importTarget.newBusName = createBusName(new Set(buses.value.map((item) => item.name)));
+  importReviewState.newExpanded = true;
+  importReviewState.conflictExpanded = true;
   importModalOpen.value = true;
   closeContextMenu();
 }
@@ -3578,10 +4580,15 @@ function closeImportModal() {
   importModalOpen.value = false;
   importCandidates.value = [];
   importStage.value = 'choose';
+  importTarget.connectionMode = buses.value.length > 0 ? 'existing' : 'new';
+  importTarget.busId = '';
+  importTarget.newBusName = '';
+  importReviewState.newExpanded = true;
+  importReviewState.conflictExpanded = true;
 }
 
 function candidateDisplayName(candidate) {
-  if (candidate.conflict) {
+  if (candidate.resolveMode === 'create' && candidate.conflict) {
     return String(candidate.rename || '').trim();
   }
   return String(candidate.name || '').trim();
@@ -3602,6 +4609,116 @@ function ensureUniqueName(baseName, usedNames) {
   return name;
 }
 
+function buildImportTargetBus() {
+  if (importTarget.connectionMode === 'existing') {
+    const bus = buses.value.find((item) => item.id === importTarget.busId);
+    if (!bus) return { error: '请选择一个已有 CAN BUS。' };
+    return { busId: bus.id, busName: bus.name, createNewBus: false };
+  }
+
+  const requestedName = String(importTarget.newBusName || '').trim();
+  if (!requestedName) {
+    return { error: '新建 CAN BUS 名称不能为空。' };
+  }
+
+  const existingNames = new Set(buses.value.map((item) => item.name));
+  const busName = ensureUniqueName(requestedName, existingNames);
+  return { busId: '', busName, createNewBus: true };
+}
+
+function createImportLink(nodeId, busId, candidate) {
+  const protocols = normalizeProtocolsList(candidate.protocols);
+  const finalProtocols = protocols.length > 0 ? protocols : [canProtocols.GENERIC_STD];
+  const j1939Addresses = finalProtocols.includes(canProtocols.J1939)
+    ? normalizeIntegerList(candidate.j1939Addresses)
+    : [];
+  const canopenNodeIds = finalProtocols.includes(canProtocols.CANOPEN)
+    ? normalizeIntegerList(candidate.canopenNodeIds)
+    : [];
+
+  links.value.push({
+    id: crypto.randomUUID(),
+    fromType: 'node',
+    fromId: nodeId,
+    toType: 'bus',
+    toId: busId,
+    fromAnchorEdge: 'auto',
+    fromAnchorOffset: 0.5,
+    toAnchorEdge: 'auto',
+    toAnchorOffset: 0.5,
+    style: normalizeLinkStyle(activeLinkStyle.value),
+    protocols: [...finalProtocols],
+    j1939Addresses: [...j1939Addresses],
+    canopenNodeIds: [...canopenNodeIds],
+    anchors: [],
+  });
+  ensureControlAnchorsForLink(links.value[links.value.length - 1]);
+}
+
+function findNodeBusLink(nodeId, busId) {
+  return links.value.find((link) => resolveLinkNodeId(link) === nodeId && resolveLinkBusId(link) === busId) || null;
+}
+
+function mergeCandidateIntoNode(node, candidate) {
+  if (!node || !candidate) return;
+  const mergedProtocols = [...new Set([
+    ...normalizeProtocolsList(node.protocols),
+    ...normalizeProtocolsList(candidate.protocols),
+  ])];
+  const finalProtocols = mergedProtocols.length > 0 ? mergedProtocols : [canProtocols.GENERIC_STD];
+  const hasJ1939 = finalProtocols.includes(canProtocols.J1939);
+  const hasCanopen = finalProtocols.includes(canProtocols.CANOPEN);
+
+  node.protocols = finalProtocols;
+  node.j1939Addresses = hasJ1939
+    ? [...new Set([
+      ...normalizeIntegerList(node.j1939Addresses),
+      ...normalizeIntegerList(candidate.j1939Addresses),
+    ])]
+    : [];
+  node.canopenNodeIds = hasCanopen
+    ? [...new Set([
+      ...normalizeIntegerList(node.canopenNodeIds),
+      ...normalizeIntegerList(candidate.canopenNodeIds),
+    ])]
+    : [];
+  node.updatedAt = nowIso();
+}
+
+function mergeCandidateIntoLink(link, candidate) {
+  if (!link || !candidate) return;
+  const mergedProtocols = [...new Set([
+    ...normalizeProtocolsList(link.protocols),
+    ...normalizeProtocolsList(candidate.protocols),
+  ])];
+  const finalProtocols = mergedProtocols.length > 0 ? mergedProtocols : [canProtocols.GENERIC_STD];
+  const hasJ1939 = finalProtocols.includes(canProtocols.J1939);
+  const hasCanopen = finalProtocols.includes(canProtocols.CANOPEN);
+
+  link.protocols = finalProtocols;
+  link.j1939Addresses = hasJ1939
+    ? [...new Set([
+      ...normalizeIntegerList(link.j1939Addresses),
+      ...normalizeIntegerList(candidate.j1939Addresses),
+    ])]
+    : [];
+  link.canopenNodeIds = hasCanopen
+    ? [...new Set([
+      ...normalizeIntegerList(link.canopenNodeIds),
+      ...normalizeIntegerList(candidate.canopenNodeIds),
+    ])]
+    : [];
+}
+
+function upsertImportLink(nodeId, busId, candidate) {
+  const existed = findNodeBusLink(nodeId, busId);
+  if (!existed) {
+    createImportLink(nodeId, busId, candidate);
+    return;
+  }
+  mergeCandidateIntoLink(existed, candidate);
+}
+
 function confirmImportCandidates() {
   const selected = importCandidates.value.filter((item) => item.selected);
   if (selected.length === 0) {
@@ -3609,11 +4726,48 @@ function confirmImportCandidates() {
     return;
   }
 
+  const target = buildImportTargetBus();
+  if (target.error) {
+    setStatus(target.error, true);
+    return;
+  }
+
   pushHistorySnapshot();
   const usedNames = new Set(nodes.value.map((node) => node.name));
+  let targetBusId = target.busId;
+  if (target.createNewBus) {
+    const newBus = {
+      id: crypto.randomUUID(),
+      name: target.busName,
+      baudRate: DEFAULT_BUS_BAUD,
+      color: normalizeBusColor(BUS_COLOR_POOL[buses.value.length % BUS_COLOR_POOL.length]),
+      position: nextBusPosition(),
+    };
+    buses.value.push(newBus);
+    targetBusId = newBus.id;
+  }
+
   let importedCount = 0;
+  let mergedCount = 0;
 
   for (const candidate of selected) {
+    if (candidate.resolveMode === 'merge') {
+      const mergeNodeName = resolveCandidateMergeNodeName(candidate);
+      if (!mergeNodeName) {
+        setStatus('存在合并项未选择目标 ECU。', true);
+        return;
+      }
+      const existingNode = nodes.value.find((node) => node.name === mergeNodeName);
+      if (!existingNode) {
+        setStatus(`未找到要合并的 ECU：${mergeNodeName}。`, true);
+        return;
+      }
+      mergeCandidateIntoNode(existingNode, candidate);
+      upsertImportLink(existingNode.id, targetBusId, candidate);
+      mergedCount += 1;
+      continue;
+    }
+
     const baseName = candidateDisplayName(candidate);
     if (!baseName) {
       setStatus('存在空节点名，请先填写重命名。', true);
@@ -3621,7 +4775,7 @@ function confirmImportCandidates() {
     }
 
     const name = ensureUniqueName(baseName, usedNames);
-    nodes.value.push({
+    const newNode = {
       id: crypto.randomUUID(),
       name,
       note: '',
@@ -3633,13 +4787,20 @@ function confirmImportCandidates() {
       source: 'dbc-import',
       createdAt: nowIso(),
       updatedAt: nowIso(),
-    });
+    };
+    nodes.value.push(newNode);
+    upsertImportLink(newNode.id, targetBusId, candidate);
     importedCount += 1;
   }
 
+  setBusSelection([targetBusId], { sync: false });
+  selectedIds.value = [];
+  selectedLinkId.value = '';
+  syncDraftFromSelected();
+  syncBusDraftFromSelected();
   persistNodes();
   closeImportModal();
-  setStatus(`已导入 ${importedCount} 个节点。`);
+  setStatus(`已导入新增 ${importedCount} 个，合并 ${mergedCount} 个，并连接到 CAN BUS：${target.busName}。`);
 }
 
 async function handleDbcFileChosen(event) {
@@ -3669,23 +4830,14 @@ async function importDbcFile(file) {
       return;
     }
 
-    const existingNames = new Set(nodes.value.map((node) => node.name));
-    importCandidates.value = parsed.map((node, idx) => {
-      const conflict = existingNames.has(node.name);
-      return {
-        id: `import-${idx}-${node.name}`,
-        name: node.name,
-        protocols: node.protocols || [],
-        j1939Addresses: node.j1939Addresses || [],
-        canopenNodeIds: node.canopenNodeIds || [],
-        baseColor: DEFAULT_NODE_BASE_COLOR,
-        conflict,
-        rename: conflict ? `${node.name}_import` : node.name,
-        selected: !conflict,
-      };
-    });
+    importCandidates.value = buildImportCandidatesFromParsed(parsed);
 
     importStage.value = 'review';
+    importTarget.connectionMode = buses.value.length > 0 ? 'existing' : 'new';
+    importTarget.busId = selectedBusIds.value[0] || selectedBusId.value || buses.value[0]?.id || '';
+    importTarget.newBusName = createBusName(new Set(buses.value.map((item) => item.name)));
+    importReviewState.newExpanded = true;
+    importReviewState.conflictExpanded = true;
     importModalOpen.value = true;
     setStatus(`解析成功，识别到 ${parsed.length} 个节点。`);
   } catch (error) {
@@ -3760,9 +4912,9 @@ onBeforeUnmount(() => {
   finishBusDrag();
   onLinkAnchorPointerUp();
   clearNodeLinkDraft();
-  onCanvasPanPointerUp();
+  stopCanvasPan();
   onCanvasResizePointerUp();
-  onSelectionPointerUp();
+  stopBoxSelection();
   closeContextMenu();
   stopAutoSaveTimer();
   stopDraftApplyTimer();
@@ -3825,9 +4977,7 @@ watch(
   () => singleSelectedLink.value?.style,
   (style) => {
     if (!style || isSyncingLinkEditor) return;
-    const normalized = ['straight', 'polyline', 'curve', 'rounded', 'orthogonal'].includes(style)
-      ? style
-      : 'straight';
+    const normalized = normalizeLinkStyle(style);
     linkEditor.style = normalized;
     activeLinkStyle.value = normalized;
   }
@@ -3839,6 +4989,26 @@ watch(
     if (isSyncingLinkEditor) return;
     setSelectedLinkStyle(style, {
       updateToolbar: true,
+      showStatus: false,
+    });
+  }
+);
+
+watch(
+  () => linkEditor.protocols.join('|'),
+  () => {
+    if (isSyncingLinkEditor) return;
+    setSelectedLinkProtocols(linkEditor.protocols, {
+      showStatus: false,
+    });
+  }
+);
+
+watch(
+  () => [linkEditor.j1939AddressesInput, linkEditor.canopenNodeIdsInput],
+  () => {
+    if (isSyncingLinkEditor) return;
+    setSelectedLinkAddresses(linkEditor.j1939AddressesInput, linkEditor.canopenNodeIdsInput, {
       showStatus: false,
     });
   }

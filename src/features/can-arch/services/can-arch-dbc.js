@@ -318,8 +318,9 @@ function parseSplitToken(token) {
   return null;
 }
 
-export function serializeNodesToDbc(nodes = []) {
+export function serializeNodesToDbc(nodes = [], options = {}) {
   const safeNodes = Array.isArray(nodes) ? nodes : [];
+  const profile = options?.profile === 'j1939' ? 'j1939' : 'standard';
   const usedTokens = new Set();
   const tokenRecords = safeNodes
     .flatMap((node) => explodeNodeToDbcRecords(node))
@@ -333,7 +334,7 @@ export function serializeNodesToDbc(nodes = []) {
     });
 
   const lines = [
-    'VERSION "CAN_ARCH_NODES_v1"',
+    profile === 'j1939' ? 'VERSION "CAN_ARCH_NODES_J1939_v1"' : 'VERSION "CAN_ARCH_NODES_v1"',
     '',
     'NS_ :',
     '  BA_DEF_',
@@ -569,15 +570,19 @@ export function validateCanNodeDraft(draft) {
     }
   }
 
+  const normalizedProtocols = normalizeProtocolsList(protocols, draft?.genericFrameFormat);
+  const hasJ1939 = normalizedProtocols.includes(PROTOCOL_J1939);
+  const hasCanopen = normalizedProtocols.includes(PROTOCOL_CANOPEN);
+
   return {
     errors,
     warnings,
     normalized: {
       name: String(draft?.name || '').trim(),
       note: String(draft?.note || '').trim(),
-      protocols: normalizeProtocolsList(protocols, draft?.genericFrameFormat),
-      j1939Addresses: j1939Result.values,
-      canopenNodeIds: canopenResult.values,
+      protocols: normalizedProtocols,
+      j1939Addresses: hasJ1939 ? j1939Result.values : [],
+      canopenNodeIds: hasCanopen ? canopenResult.values : [],
       genericFrameFormat: normalizeGenericFrameFormat(draft?.genericFrameFormat),
     },
   };
