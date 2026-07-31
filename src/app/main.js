@@ -4,13 +4,11 @@ import { initResize } from '@/features/chart/ui/resize-manager.js';
 import { initJ1939Tool } from '@/features/j1939/ui/j1939-manager.js';
 import {
   applyChartUiStateToConfig,
-  applyWrapperSizing,
   buildGroupCurves,
   buildGroupDataFromCurveGroups,
   buildInitialGroups,
   createChartRenderOptions,
   drawChart,
-  readChartInputsFromDom,
   readChartUiStateFromStorage,
   saveChartUiState,
 } from '@/features/chart/services';
@@ -22,12 +20,22 @@ let chartInitialized = false;
 let j1939Initialized = false;
 
 function triggerRedraw() {
-  const chartInputs = readChartInputsFromDom(chartConfig);
   const sampleCount = chartConfig.formulaSampleCount || 200;
   const groupData = buildGroupDataFromCurveGroups(curveGroups, sampleCount, buildGroupCurves);
-  const options = createChartRenderOptions(chartInputs, groupData);
+  const options = createChartRenderOptions(groupData, (groupIdx, nextDisplaySettings) => {
+    if (!Number.isFinite(Number(groupIdx))) return;
+    const safeGroupIndex = Number(groupIdx);
+    const group = curveGroups[safeGroupIndex];
+    if (!group) return;
 
-  applyWrapperSizing(options.width, options.height, options.axisColor);
+    group.displaySettings = {
+      ...(group.displaySettings || {}),
+      ...nextDisplaySettings,
+    };
+
+    triggerRedraw();
+  });
+
   saveChartUiState(chartConfig, curveGroups);
   drawChart(options);
 }
@@ -40,7 +48,7 @@ export function initializeChartModule() {
 
   chartInitialized = true;
   initForm(chartConfig, curveGroups, triggerRedraw);
-  initResize(triggerRedraw);
+  initResize(curveGroups, triggerRedraw);
   triggerRedraw();
 }
 

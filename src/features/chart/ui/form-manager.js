@@ -1,4 +1,3 @@
-import { createApp } from 'vue';
 import {
   addCurveToGroup,
   addGroup,
@@ -23,14 +22,13 @@ import { buildFormulaEditorTitle, validateFormulaDraft } from '@/features/chart/
 import { useFormulaEditorBridge } from '@/features/chart/ui/composables/use-formula-editor-bridge.js';
 import {
   bindChartActionButtons,
-  bindChartSettingsChangeHandlers,
-  initializeChartSettingsInputs,
 } from '@/features/chart/ui/services/chart-settings-controller.js';
-import { createSettingsPanelController } from '@/features/chart/ui/services/settings-panel-controller.js';
+import { createChartUiAdapter } from '@/features/chart/ui/services/chart-ui-adapter.js';
 import CurveGroupList from '@/features/chart/ui/components/CurveGroupList.vue';
 
-export function initForm(chartConfig, curveGroups, triggerRedraw) {
+export function initForm(chartConfig, curveGroups, triggerRedraw, options = {}) {
   let curveListApp = null;
+  const uiAdapter = createChartUiAdapter(options.uiAdapter || {});
   const uidPrefix = `${Date.now()}`;
   let uidSeed = 0;
 
@@ -60,15 +58,12 @@ export function initForm(chartConfig, curveGroups, triggerRedraw) {
     buildDefaultFunctionSource,
   });
 
-  initializeChartSettingsInputs(chartConfig);
-
   const curveContextMenu = createCurveContextMenu({
     curveGroups,
     onMoveCurveToGroup: (fromGroupIdx, fromCurveIdx, targetGroupIdx) => {
       moveCurveToGroup(fromGroupIdx, fromCurveIdx, targetGroupIdx);
     },
   });
-  createSettingsPanelController();
 
   function moveCurveToGroup(fromGroupIdx, fromCurveIdx, targetGroupIdx) {
     const moved = moveCurveBetweenGroups(
@@ -170,18 +165,14 @@ export function initForm(chartConfig, curveGroups, triggerRedraw) {
 
   function showCurveHelp(groupIdx, curveIdx) {
     const message = buildCurveHelpMessage(curveGroups, groupIdx, curveIdx, buildDefaultCurveAlias);
-    window.alert(message);
+    uiAdapter.showMessage(message);
   }
 
   function renderCurveGroups() {
-    const list = document.getElementById('curve-list');
-    if (!list) return;
-    if (curveListApp) {
-      curveListApp.unmount();
-      curveListApp = null;
-    }
-    list.innerHTML = '';
-    curveListApp = createApp(CurveGroupList, {
+    curveListApp = uiAdapter.mountCurveList({
+      component: CurveGroupList,
+      existingApp: curveListApp,
+      props: {
       curveGroups,
       buildDefaultCurveAlias,
       onAddCurve: (groupIdx) => {
@@ -212,8 +203,8 @@ export function initForm(chartConfig, curveGroups, triggerRedraw) {
       onMoveCurveToGroup: (fromGroupIdx, fromCurveIdx, targetGroupIdx) => {
         moveCurveToGroup(fromGroupIdx, fromCurveIdx, targetGroupIdx);
       },
+      },
     });
-    curveListApp.mount(list);
   }
 
   bindChartActionButtons({
@@ -224,8 +215,6 @@ export function initForm(chartConfig, curveGroups, triggerRedraw) {
     },
     onReRender: triggerRedraw,
   });
-
-  bindChartSettingsChangeHandlers(triggerRedraw);
 
   function validateFormulaBeforeSave(payload) {
     const {

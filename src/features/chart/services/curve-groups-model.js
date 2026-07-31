@@ -1,3 +1,23 @@
+export function normalizeGroupDisplaySettings(rawSettings = {}, chartConfig = {}) {
+  const width = Number(rawSettings.width);
+  const height = Number(rawSettings.height);
+
+  return {
+    width: Number.isFinite(width) ? width : (chartConfig.width || 800),
+    height: Number.isFinite(height) ? height : (chartConfig.height || 800),
+    showGrid: typeof rawSettings.showGrid === 'boolean'
+      ? rawSettings.showGrid
+      : (chartConfig.showGrid !== false),
+    showPoints: typeof rawSettings.showPoints === 'boolean'
+      ? rawSettings.showPoints
+      : (chartConfig.showPoints !== false),
+    chartBackgroundColor: rawSettings.chartBackgroundColor || chartConfig.chartBackgroundColor || '#fffdf9',
+    axisColor: rawSettings.axisColor || chartConfig.axisColor || '#3d3d3a',
+    tickColor: rawSettings.tickColor || chartConfig.tickColor || '#6c6a64',
+    gridColor: rawSettings.gridColor || chartConfig.gridColor || '#d8d0c4',
+  };
+}
+
 export function createDefaultCurveModel(index = 0, deps = {}) {
   const { nextId, buildDefaultCurveAlias, buildDefaultFunctionSource } = deps;
   const defaultDslSource = index === 0 ? '0' : String(index * 10);
@@ -25,6 +45,7 @@ export function createDefaultGroupModel(index = 0, deps = {}) {
     yUnit: chartConfig.yUnit || '',
     formulaXMin: chartConfig.formulaXMin ?? 0,
     formulaXMax: chartConfig.formulaXMax ?? 100,
+    displaySettings: normalizeGroupDisplaySettings({}, chartConfig),
     curves: [createDefaultCurve(0)],
   };
 }
@@ -52,6 +73,7 @@ export function normalizeCurveGroups(curveGroups, deps = {}) {
     group.yUnit = group.yUnit || chartConfig.yUnit || '';
     group.formulaXMin = Number.isFinite(Number(group.formulaXMin)) ? Number(group.formulaXMin) : (chartConfig.formulaXMin ?? 0);
     group.formulaXMax = Number.isFinite(Number(group.formulaXMax)) ? Number(group.formulaXMax) : (chartConfig.formulaXMax ?? 100);
+    group.displaySettings = normalizeGroupDisplaySettings(group.displaySettings || {}, chartConfig);
 
     if (!Array.isArray(group.curves) || group.curves.length === 0) {
       group.curves = [createDefaultCurve(0)];

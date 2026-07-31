@@ -5,9 +5,12 @@ const ROUTE_STORAGE_KEY = 'coderOnlineTools.activeRoute.v1';
 function readPreferredRoute() {
   try {
     const value = localStorage.getItem(ROUTE_STORAGE_KEY);
-    return value === '/j1939' ? '/j1939' : '/chart';
+    if (value === '/home') return '/home';
+    if (value === '/can-arch') return '/can-arch';
+    if (value === '/wenyan') return '/wenyan';
+    return '/home';
   } catch (_) {
-    return '/chart';
+    return '/home';
   }
 }
 
@@ -19,14 +22,29 @@ const router = createRouter({
       redirect: () => readPreferredRoute(),
     },
     {
+      path: '/home',
+      name: 'home',
+      component: () => import('@/app/pages/HomePage.vue'),
+    },
+    {
       path: '/chart',
       name: 'chart',
       component: () => import('@/app/pages/ChartPage.vue'),
     },
     {
+      path: '/can-arch',
+      name: 'can-arch',
+      component: () => import('@/app/pages/CanArchPage.vue'),
+    },
+    {
       path: '/j1939',
       name: 'j1939',
-      component: () => import('@/app/pages/J1939Page.vue'),
+      redirect: '/can-arch',
+    },
+    {
+      path: '/wenyan',
+      name: 'wenyan',
+      component: () => import('@/app/pages/WenyanPage.vue'),
     },
     {
       path: '/:pathMatch(.*)*',
@@ -37,7 +55,8 @@ const router = createRouter({
 
 router.afterEach((to) => {
   try {
-    localStorage.setItem(ROUTE_STORAGE_KEY, to.path === '/j1939' ? '/j1939' : '/chart');
+    const safePath = ['/home', '/chart', '/can-arch', '/wenyan'].includes(to.path) ? to.path : '/home';
+    localStorage.setItem(ROUTE_STORAGE_KEY, safePath);
   } catch (_) {
     // Ignore storage errors.
   }

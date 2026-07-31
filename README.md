@@ -91,3 +91,11 @@ npm run build:exe
 2. 发布前执行 `npm run build:exe` 并验证 EXE 可启动。
 3. 结构调整时只需要保证 `dist/web/` 输出可用，`pkg.assets` 固定保持 `dist/web/**/*`。
 
+## 7. 第三方许可证说明
+
+本项目集成了 `wenyan-lang/wenyan` 的运行时文件（用于文言编程功能）。
+
+- 项目地址：`https://github.com/wenyan-lang/wenyan`
+- 开源协议：MIT License
+- 许可证全文与归属声明见：`THIRD_PARTY_NOTICES.md`
+

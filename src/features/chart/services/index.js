@@ -1,12 +1,10 @@
 export {
   applyChartUiStateToConfig,
-  readChartInputsFromDom,
   readChartUiStateFromStorage,
   saveChartUiState,
 } from './chart-ui-storage.js';
 
 export {
-  applyWrapperSizing,
   buildGroupDataFromCurveGroups,
   createChartRenderOptions,
 } from './chart-render-options.js';
@@ -32,3 +30,7 @@ export {
 export { buildCurveHelpMessage } from './curve-help.js';
 export { createCurveContextMenu } from './curve-context-menu.js';
 export { buildFormulaEditorTitle, validateFormulaDraft } from './formula-validation.js';
+export { normalizeDisplaySettings, openChartDisplaySettingsDialog } from './chart-display-settings-modal.js';
+export { normalizeChartGroups } from './chart-group-normalizer.js';
+export { setupChartInspector } from './chart-inspector.js';
+export { drawSingleChartGroup } from './chart-d3-group-drawer.js';

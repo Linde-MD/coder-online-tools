@@ -6,6 +6,7 @@ import {
   validateGroupCurveAliases,
   validateGroupFormulaDependencies,
 } from '@/shared/config/formula-storage.js';
+import { normalizeGroupDisplaySettings } from '@/features/chart/services/curve-groups-model.js';
 import { parseCoordinatePoints } from '@/shared/utils/common-utils.js';
 
 function normalizePoints(points = []) {
@@ -78,6 +79,7 @@ export function buildInitialGroups(chartConfig) {
       yUnit: group.yUnit || chartConfig.yUnit || '',
       formulaXMin: Number.isFinite(Number(group.formulaXMin)) ? Number(group.formulaXMin) : (chartConfig.formulaXMin ?? 0),
       formulaXMax: Number.isFinite(Number(group.formulaXMax)) ? Number(group.formulaXMax) : (chartConfig.formulaXMax ?? 100),
+      displaySettings: normalizeGroupDisplaySettings(group.displaySettings || {}, chartConfig),
       curves: Array.isArray(group.curves) && group.curves.length > 0
         ? group.curves.map((curve, curveIdx) => ensureCurve(curve, curveIdx))
         : [ensureCurve({}, 0)],
@@ -101,6 +103,7 @@ export function buildInitialGroups(chartConfig) {
     yUnit: chartConfig.yUnit || '',
     formulaXMin: chartConfig.formulaXMin ?? 0,
     formulaXMax: chartConfig.formulaXMax ?? 100,
+    displaySettings: normalizeGroupDisplaySettings({}, chartConfig),
     curves: legacyCurves.map((curve, idx) => ensureCurve(curve, idx)),
   }];
 }

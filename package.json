@@ -21,6 +21,8 @@
         "koa-proxies": "^0.12.4",
         "koa-static": "^5.0.0",
         "lodash": "^4.17.21",
+        "marked": "^18.0.7",
+        "monaco-editor": "^0.56.0",
         "vue": "^3.5.40",
         "vue-router": "^4.5.1"
     },
@@ -31,11 +33,14 @@
         "pkg": "^5.8.1",
         "postcss": "^8.5.25",
         "tailwindcss": "^4.3.3",
-        "vite": "^7.1.0"
+        "vite": "^7.1.0",
+        "vitest": "^4.1.10"
     },
     "scripts": {
         "dev": "vite",
         "build:web": "vite build",
+        "test": "vitest run",
+        "test:watch": "vitest",
         "preview": "vite preview",
         "serve:koa": "node scripts/server/koa-server.js",
         "build:exe": "npm run build:web && pkg scripts/server/koa-server.js --targets node18-win-x64 --output dist/coder-online-tools-lab.exe",

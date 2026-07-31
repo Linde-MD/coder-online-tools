@@ -13,37 +13,21 @@ export function buildGroupDataFromCurveGroups(curveGroups, sampleCount, buildGro
     }
 
     return {
+      sourceGroupIdx: groupIdx,
       title: group.title,
       xName: group.xName,
       xUnit: group.xUnit,
       yName: group.yName,
       yUnit: group.yUnit,
+      displaySettings: group.displaySettings,
       curves,
     };
   });
 }
 
-export function createChartRenderOptions(chartInputs, groupData) {
+export function createChartRenderOptions(groupData, onGroupDisplaySettingsChange) {
   return {
-    width: chartInputs.width,
-    height: chartInputs.height,
-    showMaxGuideLines: chartInputs.showMaxGuideLines,
-    showGridLines: chartInputs.showGrid,
-    showPoints: chartInputs.showPoints,
-    chartBackgroundColor: chartInputs.chartBackgroundColor,
-    axisColor: chartInputs.axisColor,
-    tickColor: chartInputs.tickColor,
-    gridColor: chartInputs.gridColor,
-    guideLineColor: chartInputs.guideLineColor,
     groupData,
+    onGroupDisplaySettingsChange,
   };
-}
-
-export function applyWrapperSizing(width, height, axisColor) {
-  document.querySelectorAll('.svg-resize-wrapper').forEach(wrapper => {
-    wrapper.style.width = `${width}px`;
-    wrapper.style.height = `${height}px`;
-    wrapper.style.setProperty('--chart-axis-color', axisColor);
-    wrapper.style.setProperty('--chart-label-bg', 'rgba(255,255,255,0.72)');
-  });
 }
