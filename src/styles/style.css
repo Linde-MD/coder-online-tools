@@ -1637,6 +1637,11 @@ body.theme-warm-editorial {
     color: #66594f;
 }
 
+.can-pill-neutral-ext {
+    background: #eee6db;
+    color: #52463b;
+}
+
 .can-pill-j1939 {
     border-color: rgba(62, 152, 87, 0.5);
     background: #eaf8ee;
@@ -1647,6 +1652,83 @@ body.theme-warm-editorial {
     border-color: rgba(61, 122, 226, 0.45);
     background: #edf5ff;
     color: #245aaf;
+}
+
+.can-bus-protocol-inline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.can-connected-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.can-connected-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border: 1px solid;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.can-connected-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.can-check-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    cursor: pointer;
+    padding: 3px 6px;
+    border-radius: 6px;
+    transition: background 0.15s;
+}
+
+.can-check-row:hover {
+    background: rgba(0, 0, 0, 0.03);
+}
+
+.can-check-input {
+    width: 15px;
+    height: 15px;
+    margin: 0;
+    cursor: pointer;
+    accent-color: #8b6f55;
+    flex-shrink: 0;
+}
+
+.can-check-label {
+    font-size: 13px;
+    color: #4a3a2e;
+    user-select: none;
+}
+
+.can-check-inline-input {
+    width: 150px;
+    padding: 2px 6px;
+    font-size: 12px;
+    border: 1px solid #d9c6b2;
+    border-radius: 4px;
+    background: #fefaf5;
+    color: #4a3a2e;
+}
+
+.can-check-inline-input::placeholder {
+    color: #b8a590;
+    font-size: 11px;
 }
 
 .can-protocol-addr {

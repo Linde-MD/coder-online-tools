@@ -54,7 +54,7 @@
 
     <div v-if="!activeTab" class="ecu-msg-empty">当前 ECU 未连接任何 CAN BUS。</div>
 
-    <div v-else class="ecu-msg-body" @pointermove="onSplitPointerMove" @pointerup="onSplitPointerUp" @pointercancel="onSplitPointerUp">
+    <div v-else class="ecu-msg-body">
       <button
         v-if="collapsedLeft"
         class="ecu-msg-rail left"
@@ -62,7 +62,7 @@
         title="展开接收区"
         @click="collapsedLeft = false"
       >
-        ◀ 接收
+        ▶ 接收报文
       </button>
 
       <section
@@ -73,8 +73,8 @@
       >
         <div class="ecu-msg-pane-head">
           <strong>接收报文</strong>
-          <span class="ecu-msg-count">{{ filteredRxMessages.length }}</span>
-          <button class="ecu-msg-collapse" type="button" @click="toggleCollapse('left')">◀ 收起</button>
+          <span class="ecu-msg-count">共 {{ filteredRxMessages.length }} 条</span>
+          <button class="ecu-msg-collapse" type="button" title="收起接收区" @click="toggleCollapse('left')">◀</button>
         </div>
 
         <div class="ecu-msg-grid-head">
@@ -116,13 +116,13 @@
       <section
         v-if="!collapsedRight"
         class="ecu-msg-pane tx"
-        :style="{ flex: collapsedLeft ? '1 1 auto' : '0 0 auto' }"
+        :style="{ flex: '1 1 auto' }"
         @contextmenu.prevent="openPaneContextMenu('tx', $event)"
       >
         <div class="ecu-msg-pane-head">
-          <button class="ecu-msg-collapse" type="button" @click="toggleCollapse('right')">收起 ▶</button>
+          <button class="ecu-msg-collapse" type="button" title="收起发送区" @click="toggleCollapse('right')">▶</button>
           <strong>发送报文</strong>
-          <span class="ecu-msg-count">{{ filteredTxMessages.length }}</span>
+          <span class="ecu-msg-count">共 {{ filteredTxMessages.length }} 条</span>
         </div>
 
         <div class="ecu-msg-grid-head">
@@ -166,7 +166,7 @@
         title="展开发送区"
         @click="collapsedRight = false"
       >
-        发送 ▶
+        ◀ 发送报文
       </button>
 
       <aside v-if="selectedEntity" class="ecu-msg-props">
@@ -484,15 +484,19 @@ function rowReceivers(row) {
 }
 
 function onSplitPointerDown(event) {
+  event.preventDefault();
   splitDrag.value = {
     startX: event.clientX,
     startRatio: splitRatio.value,
   };
+  document.addEventListener('pointermove', onSplitPointerMove);
+  document.addEventListener('pointerup', onSplitPointerUp);
+  document.addEventListener('pointercancel', onSplitPointerUp);
 }
 
 function onSplitPointerMove(event) {
   if (!splitDrag.value) return;
-  const host = event.currentTarget;
+  const host = editorRef.value;
   const width = host?.clientWidth || 1;
   const dx = event.clientX - splitDrag.value.startX;
   splitRatio.value = Math.max(0.2, Math.min(0.8, splitDrag.value.startRatio + dx / width));
@@ -500,6 +504,9 @@ function onSplitPointerMove(event) {
 
 function onSplitPointerUp() {
   splitDrag.value = null;
+  document.removeEventListener('pointermove', onSplitPointerMove);
+  document.removeEventListener('pointerup', onSplitPointerUp);
+  document.removeEventListener('pointercancel', onSplitPointerUp);
 }
 
 function toggleCollapse(side) {
@@ -564,6 +571,9 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleWindowKeydown);
   window.removeEventListener('pointerdown', handleWindowPointerDown);
+  document.removeEventListener('pointermove', onSplitPointerMove);
+  document.removeEventListener('pointerup', onSplitPointerUp);
+  document.removeEventListener('pointercancel', onSplitPointerUp);
 });
 
 defineExpose({
@@ -762,7 +772,6 @@ defineExpose({
   display: flex;
   align-items: center;
   gap: 8px;
-  justify-content: space-between;
   padding: 6px 8px;
   border-bottom: 1px solid #e5d4c5;
   color: #5e4a3a;
@@ -771,7 +780,7 @@ defineExpose({
 .ecu-msg-count {
   font-size: 12px;
   color: #887461;
-  margin-left: auto;
+  margin: 0 auto;
 }
 
 .ecu-msg-collapse {

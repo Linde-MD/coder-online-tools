@@ -320,12 +320,18 @@
 
             <div v-if="singleSelectedLink" class="can-node-form">
               <div class="mb-2">
-                <div class="form-label mb-1">起点</div>
-                <div class="can-side-hint p-0">{{ describeLinkEndpoint(singleSelectedLink.fromType, singleSelectedLink.fromId) }}</div>
+                <span class="form-label">起点 </span>
+                <span class="can-connected-tag" :style="endpointTagStyle(singleSelectedLink.fromType, singleSelectedLink.fromId)">
+                  <span class="can-connected-dot" :style="{ backgroundColor: endpointTagColor(singleSelectedLink.fromType, singleSelectedLink.fromId) }"></span>
+                  {{ endpointTagName(singleSelectedLink.fromType, singleSelectedLink.fromId) }}
+                </span>
               </div>
               <div class="mb-2">
-                <div class="form-label mb-1">终点</div>
-                <div class="can-side-hint p-0">{{ describeLinkEndpoint(singleSelectedLink.toType, singleSelectedLink.toId) }}</div>
+                <span class="form-label">终点 </span>
+                <span class="can-connected-tag" :style="endpointTagStyle(singleSelectedLink.toType, singleSelectedLink.toId)">
+                  <span class="can-connected-dot" :style="{ backgroundColor: endpointTagColor(singleSelectedLink.toType, singleSelectedLink.toId) }"></span>
+                  {{ endpointTagName(singleSelectedLink.toType, singleSelectedLink.toId) }}
+                </span>
               </div>
 
               <label class="form-label mb-1" for="can-link-style">线型</label>
@@ -338,73 +344,65 @@
 
               <div class="mt-2">
                 <div class="form-label mb-1">应用协议</div>
-                <label class="form-check-label d-flex align-items-center gap-2 mb-1">
+                <label class="can-check-row mb-1">
                   <input
-                    class="form-check-input"
+                    class="can-check-input"
                     type="checkbox"
                     :checked="linkEditor.protocols.includes(canProtocols.GENERIC_STD)"
                     :disabled="!canLinkUseProtocol(canProtocols.GENERIC_STD) && !linkEditor.protocols.includes(canProtocols.GENERIC_STD)"
                     @change="toggleLinkEditorProtocol(canProtocols.GENERIC_STD, $event.target.checked)"
                   >
-                  Generic 标准帧
+                  <span class="can-check-label">Generic 标准帧</span>
                 </label>
-                <label class="form-check-label d-flex align-items-center gap-2 mb-1">
+                <label class="can-check-row mb-1">
                   <input
-                    class="form-check-input"
+                    class="can-check-input"
                     type="checkbox"
                     :checked="linkEditor.protocols.includes(canProtocols.GENERIC_EXT)"
                     :disabled="!canLinkUseProtocol(canProtocols.GENERIC_EXT) && !linkEditor.protocols.includes(canProtocols.GENERIC_EXT)"
                     @change="toggleLinkEditorProtocol(canProtocols.GENERIC_EXT, $event.target.checked)"
                   >
-                  Generic 扩展帧
+                  <span class="can-check-label">Generic 扩展帧</span>
                 </label>
-                <label class="form-check-label d-flex align-items-center gap-2 mb-1">
+                <label class="can-check-row mb-1">
                   <input
-                    class="form-check-input"
+                    class="can-check-input"
                     type="checkbox"
                     :checked="linkEditor.protocols.includes(canProtocols.J1939)"
                     :disabled="!canLinkUseProtocol(canProtocols.J1939) && !linkEditor.protocols.includes(canProtocols.J1939)"
                     @change="toggleLinkEditorProtocol(canProtocols.J1939, $event.target.checked)"
                   >
-                  J1939
-                </label>
-                <label class="form-check-label d-flex align-items-center gap-2 mb-1">
+                  <span class="can-check-label">J1939</span>
                   <input
-                    class="form-check-input"
+                    v-if="linkEditor.protocols.includes(canProtocols.J1939)"
+                    v-model="linkEditor.j1939AddressesInput"
+                    class="can-check-inline-input"
+                    type="text"
+                    :disabled="resolveLinkAllowedJ1939Addresses(singleSelectedLink).length === 0"
+                    :placeholder="`可用: ${resolveLinkAllowedJ1939Addresses(singleSelectedLink).join(', ') || '无'}`"
+                  >
+                </label>
+                <label class="can-check-row mb-1">
+                  <input
+                    class="can-check-input"
                     type="checkbox"
                     :checked="linkEditor.protocols.includes(canProtocols.CANOPEN)"
                     :disabled="!canLinkUseProtocol(canProtocols.CANOPEN) && !linkEditor.protocols.includes(canProtocols.CANOPEN)"
                     @change="toggleLinkEditorProtocol(canProtocols.CANOPEN, $event.target.checked)"
                   >
-                  CANopen
+                  <span class="can-check-label">CANopen</span>
+                  <input
+                    v-if="linkEditor.protocols.includes(canProtocols.CANOPEN)"
+                    v-model="linkEditor.canopenNodeIdsInput"
+                    class="can-check-inline-input"
+                    type="text"
+                    :disabled="resolveLinkAllowedCanopenNodeIds(singleSelectedLink).length === 0"
+                    :placeholder="`可用: ${resolveLinkAllowedCanopenNodeIds(singleSelectedLink).join(', ') || '无'}`"
+                  >
                 </label>
                 <div class="can-side-hint p-0 mt-1">
                   连线协议仅可选择该 ECU 已启用的协议。
                 </div>
-              </div>
-
-              <div class="mt-2" v-if="linkEditor.protocols.includes(canProtocols.J1939)">
-                <label class="form-label mb-1" for="can-link-j1939">J1939 NmStationAddress（多个用逗号分隔）</label>
-                <input
-                  id="can-link-j1939"
-                  v-model="linkEditor.j1939AddressesInput"
-                  class="form-control form-control-sm"
-                  type="text"
-                  :disabled="resolveLinkAllowedJ1939Addresses(singleSelectedLink).length === 0"
-                  :placeholder="`可用: ${resolveLinkAllowedJ1939Addresses(singleSelectedLink).join(', ') || '无'}`"
-                >
-              </div>
-
-              <div class="mt-2" v-if="linkEditor.protocols.includes(canProtocols.CANOPEN)">
-                <label class="form-label mb-1" for="can-link-canopen">CANopen 节点号（多个用逗号分隔）</label>
-                <input
-                  id="can-link-canopen"
-                  v-model="linkEditor.canopenNodeIdsInput"
-                  class="form-control form-control-sm"
-                  type="text"
-                  :disabled="resolveLinkAllowedCanopenNodeIds(singleSelectedLink).length === 0"
-                  :placeholder="`可用: ${resolveLinkAllowedCanopenNodeIds(singleSelectedLink).join(', ') || '无'}`"
-                >
               </div>
 
               <div class="d-flex gap-2 mt-3 align-items-center">
@@ -426,10 +424,18 @@
               <div class="mt-2">
                 <div class="form-label mb-1">当前总线协议（自动识别）</div>
                 <div v-if="busProtocolsForSelected.length === 0" class="can-side-hint p-0">暂无连接连线协议</div>
-                <div v-else class="can-node-protocol-groups">
-                  <div v-for="proto in busProtocolsForSelected" :key="proto" class="can-protocol-group" :class="protocolRowClass(proto)">
-                    <span class="can-pill" :class="protocolBadgeClass(proto)">{{ protocolLabel(proto) }}</span>
-                  </div>
+                <div v-else class="can-bus-protocol-inline">
+                  <span v-for="proto in busProtocolsForSelected" :key="proto" class="can-pill" :class="protocolBadgeClass(proto)">{{ protocolLabel(proto) }}</span>
+                </div>
+              </div>
+
+              <div class="mt-2" v-if="busConnectedNodes.length > 0">
+                <div class="form-label mb-1">已连接 ECU 节点</div>
+                <div class="can-connected-items">
+                  <span v-for="node in busConnectedNodes" :key="node.id" class="can-connected-tag" :style="{ backgroundColor: node.baseColor + '22', borderColor: node.baseColor, color: node.baseColor }">
+                    <span class="can-connected-dot" :style="{ backgroundColor: node.baseColor }"></span>
+                    {{ node.name }}
+                  </span>
                 </div>
               </div>
             </div>
@@ -443,52 +449,56 @@
 
               <div class="mt-2">
                 <div class="form-label mb-1">协议</div>
-                <label class="form-check-label d-flex align-items-center gap-2 mb-1">
+                <label class="can-check-row mb-1">
                   <input
-                    class="form-check-input"
+                    class="can-check-input"
                     type="checkbox"
                     :checked="draft.protocols.includes(canProtocols.GENERIC_STD)"
                     @change="toggleDraftProtocol(canProtocols.GENERIC_STD, $event.target.checked)"
                   >
-                  Generic 标准帧
+                  <span class="can-check-label">Generic 标准帧</span>
                 </label>
-                <label class="form-check-label d-flex align-items-center gap-2 mb-1">
+                <label class="can-check-row mb-1">
                   <input
-                    class="form-check-input"
+                    class="can-check-input"
                     type="checkbox"
                     :checked="draft.protocols.includes(canProtocols.GENERIC_EXT)"
                     @change="toggleDraftProtocol(canProtocols.GENERIC_EXT, $event.target.checked)"
                   >
-                  Generic 扩展帧
+                  <span class="can-check-label">Generic 扩展帧</span>
                 </label>
-                <label class="form-check-label d-flex align-items-center gap-2 mb-1">
+                <label class="can-check-row mb-1">
                   <input
-                    class="form-check-input"
+                    class="can-check-input"
                     type="checkbox"
                     :checked="draft.protocols.includes(canProtocols.J1939)"
                     @change="toggleDraftProtocol(canProtocols.J1939, $event.target.checked)"
                   >
-                  J1939
-                </label>
-                <label class="form-check-label d-flex align-items-center gap-2 mb-1">
+                  <span class="can-check-label">J1939</span>
                   <input
-                    class="form-check-input"
+                    v-if="draft.protocols.includes(canProtocols.J1939)"
+                    v-model="draft.j1939AddressesInput"
+                    class="can-check-inline-input"
+                    type="text"
+                    placeholder="地址 如: 19, 130"
+                  >
+                </label>
+                <label class="can-check-row mb-1">
+                  <input
+                    class="can-check-input"
                     type="checkbox"
                     :checked="draft.protocols.includes(canProtocols.CANOPEN)"
                     @change="toggleDraftProtocol(canProtocols.CANOPEN, $event.target.checked)"
                   >
-                  CANopen
+                  <span class="can-check-label">CANopen</span>
+                  <input
+                    v-if="draft.protocols.includes(canProtocols.CANOPEN)"
+                    v-model="draft.canopenNodeIdsInput"
+                    class="can-check-inline-input"
+                    type="text"
+                    placeholder="节点号 如: 1, 2, 127"
+                  >
                 </label>
-              </div>
-
-              <div class="mt-2" v-if="draft.protocols.includes(canProtocols.J1939)">
-                <label class="form-label mb-1" for="can-node-j1939">J1939 NmStationAddress（多个用逗号分隔）</label>
-                <input id="can-node-j1939" v-model="draft.j1939AddressesInput" class="form-control form-control-sm" type="text" placeholder="如: 19, 130">
-              </div>
-
-              <div class="mt-2" v-if="draft.protocols.includes(canProtocols.CANOPEN)">
-                <label class="form-label mb-1" for="can-node-canopen">CANopen 节点号（多个用逗号分隔）</label>
-                <input id="can-node-canopen" v-model="draft.canopenNodeIdsInput" class="form-control form-control-sm" type="text" placeholder="如: 1, 2, 127">
               </div>
 
               <div class="mt-2">
@@ -496,6 +506,16 @@
                 <div class="can-base-color-row">
                   <input id="can-node-base-color" v-model="draft.baseColor" class="form-control form-control-color form-control-sm" type="color">
                   <input v-model="draft.baseColor" class="form-control form-control-sm" type="text" maxlength="7" placeholder="#D85F3F">
+                </div>
+              </div>
+
+              <div class="mt-2" v-if="nodeConnectedBuses.length > 0">
+                <div class="form-label mb-1">已连接 CAN BUS</div>
+                <div class="can-connected-items">
+                  <span v-for="bus in nodeConnectedBuses" :key="bus.id" class="can-connected-tag" :style="{ backgroundColor: bus.color + '22', borderColor: bus.color, color: bus.color }">
+                    <span class="can-connected-dot" :style="{ backgroundColor: bus.color }"></span>
+                    {{ bus.name }}
+                  </span>
                 </div>
               </div>
 
@@ -1388,6 +1408,44 @@ const busProtocolsForSelected = computed(() => {
   return [...protocolSet];
 });
 
+const busConnectedNodes = computed(() => {
+  const bus = singleSelectedBus.value;
+  if (!bus) return [];
+  const nodeMap = new Map();
+  for (const link of links.value) {
+    const ft = link.fromType || 'node';
+    const tt = link.toType || 'bus';
+    const fid = link.fromId || link.nodeId;
+    const tid = link.toId || link.busId;
+    const busHit = (ft === 'bus' && fid === bus.id) || (tt === 'bus' && tid === bus.id);
+    if (!busHit) continue;
+    const nodeId = ft === 'node' ? fid : (tt === 'node' ? tid : '');
+    if (!nodeId || nodeMap.has(nodeId)) continue;
+    const node = nodes.value.find((n) => n.id === nodeId);
+    if (node) nodeMap.set(nodeId, node);
+  }
+  return [...nodeMap.values()];
+});
+
+const nodeConnectedBuses = computed(() => {
+  const node = singleSelectedNode.value;
+  if (!node) return [];
+  const busMap = new Map();
+  for (const link of links.value) {
+    const ft = link.fromType || 'node';
+    const tt = link.toType || 'bus';
+    const fid = link.fromId || link.nodeId;
+    const tid = link.toId || link.busId;
+    const nodeHit = (ft === 'node' && fid === node.id) || (tt === 'node' && tid === node.id);
+    if (!nodeHit) continue;
+    const busId = ft === 'bus' ? fid : (tt === 'bus' ? tid : '');
+    if (!busId || busMap.has(busId)) continue;
+    const bus = buses.value.find((b) => b.id === busId);
+    if (bus) busMap.set(busId, bus);
+  }
+  return [...busMap.values()];
+});
+
 function normalizeProtocolsList(value) {
   return domainNormalizeProtocolsList(value, SUPPORTED_CAN_PROTOCOLS);
 }
@@ -1663,7 +1721,8 @@ function protocolLabel(protocol) {
 }
 
 function protocolBadgeClass(protocol) {
-  if (protocol === canProtocols.GENERIC_STD || protocol === canProtocols.GENERIC_EXT) return 'can-pill-neutral';
+  if (protocol === canProtocols.GENERIC_STD) return 'can-pill-neutral';
+  if (protocol === canProtocols.GENERIC_EXT) return 'can-pill-neutral-ext';
   return protocol === canProtocols.CANOPEN ? 'can-pill-canopen' : 'can-pill-j1939';
 }
 
@@ -2336,6 +2395,31 @@ function describeLinkEndpoint(type, id) {
   }
   const bus = buses.value.find((item) => item.id === id);
   return bus ? `CAN BUS: ${bus.name}` : 'CAN BUS: 已删除';
+}
+
+function endpointTagName(type, id) {
+  if (!id) return '-';
+  if (type === 'node') {
+    const node = nodes.value.find((item) => item.id === id);
+    return node ? node.name : '已删除';
+  }
+  const bus = buses.value.find((item) => item.id === id);
+  return bus ? bus.name : '已删除';
+}
+
+function endpointTagColor(type, id) {
+  if (!id) return '#888';
+  if (type === 'node') {
+    const node = nodes.value.find((item) => item.id === id);
+    return node ? node.baseColor : '#888';
+  }
+  const bus = buses.value.find((item) => item.id === id);
+  return bus ? bus.color : '#888';
+}
+
+function endpointTagStyle(type, id) {
+  const color = endpointTagColor(type, id);
+  return { backgroundColor: color + '22', borderColor: color, color };
 }
 
 function syncLinkEditorFromSelected() {
