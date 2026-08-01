@@ -1,10 +1,15 @@
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { CanMessage } from '../../domain/models/CanMessage.js';
 
 function intersects(a, b) {
   if (!Array.isArray(a) || !Array.isArray(b) || a.length === 0 || b.length === 0) return false;
   const set = new Set(a);
   return b.some((item) => set.has(item));
+}
+
+function cacheKey(ecu, bus) {
+  if (!ecu || !bus) return '';
+  return `${ecu}__${bus}`;
 }
 
 export function useEcuMessageWorkspace({ ecuRef, busTabsRef }) {
@@ -18,7 +23,145 @@ export function useEcuMessageWorkspace({ ecuRef, busTabsRef }) {
 
   const activeBusId = ref('');
   const filterPeerIds = ref([]);
-  const filterProtocols = ref([]);
+  const filterProtocols = ref([...protocolValues]);
+
+  const ecuId = computed(() => ecuRef.value?.id || '');
+
+  const activeTab = computed(() => busTabsRef.value.find((tab) => tab.busId === activeBusId.value) || null);
+  const peerOptions = computed(() => activeTab.value?.peers || []);
+
+  const switchState = {
+    ecuChanged: false,
+    busChanged: false,
+    pendingEcuId: '',
+    pendingOldEcuId: '',
+    pendingBusId: '',
+    pendingOldBusId: '',
+    capturedFilters: null,
+    capturedOldBusId: '',
+    scheduled: false,
+  };
+
+  const filterStateCache = new Map();
+  const preSnapshot = new Map();
+
+  function captureCurrentFilters() {
+    return {
+      peerIds: [...filterPeerIds.value],
+      protocols: [...filterProtocols.value],
+    };
+  }
+
+  function resolvePeersForBus(busId) {
+    const tabs = busTabsRef.value;
+    if (!Array.isArray(tabs) || tabs.length === 0) return [];
+    const tab = tabs.find((t) => t.busId === busId);
+    return tab?.peers || [];
+  }
+
+  function saveFiltersFor(ecu, bus, snapshot) {
+    const key = cacheKey(ecu, bus);
+    if (!key) return;
+    const peers = resolvePeersForBus(bus);
+    let validPeerIds = [...snapshot.peerIds];
+    if (peers.length > 0) {
+      const validSet = new Set(peers.map((p) => p.id));
+      validPeerIds = snapshot.peerIds.filter((id) => validSet.has(id));
+    }
+    filterStateCache.set(key, {
+      peerIds: validPeerIds,
+      protocols: [...snapshot.protocols],
+    });
+  }
+
+  function applyPeerSelectionForBus(targetEcuId = ecuId.value, targetBusId = activeBusId.value) {
+    const peers = resolvePeersForBus(targetBusId);
+    if (!peers || peers.length === 0) {
+      filterPeerIds.value = [];
+      filterProtocols.value = [...protocolValues];
+      return;
+    }
+    const key = cacheKey(targetEcuId, targetBusId);
+    if (key) {
+      const cached = filterStateCache.get(key);
+      if (cached && cached.peerIds?.length > 0) {
+        const validSet = new Set(peers.map((p) => p.id));
+        const filtered = cached.peerIds.filter((id) => validSet.has(id));
+        if (filtered.length > 0) {
+          filterPeerIds.value = filtered;
+          if (cached.protocols?.length) {
+            filterProtocols.value = cached.protocols;
+          }
+          return;
+        }
+      }
+    }
+    filterPeerIds.value = peers.map((p) => p.id);
+    filterProtocols.value = [...protocolValues];
+  }
+
+  function isWorkspaceConsistent(ecu, bus) {
+    if (!ecu || !bus) return false;
+    const tabs = busTabsRef.value;
+    if (!Array.isArray(tabs) || tabs.length === 0) return false;
+    return tabs.some((tab) => tab.busId === bus);
+  }
+
+  function flushSwitch() {
+    if (!switchState.ecuChanged && !switchState.busChanged) return;
+
+    const newEcuId = switchState.ecuChanged ? switchState.pendingEcuId : ecuId.value;
+    const newBusId = switchState.busChanged ? switchState.pendingBusId : activeBusId.value;
+
+    if (switchState.ecuChanged && switchState.pendingOldEcuId) {
+      const oldBusForOldEcu = switchState.busChanged
+        ? switchState.pendingOldBusId
+        : (switchState.capturedOldBusId || activeBusId.value);
+      if (switchState.pendingOldEcuId && oldBusForOldEcu) {
+        const k = cacheKey(switchState.pendingOldEcuId, oldBusForOldEcu);
+        const snapshot = preSnapshot.get(k) || switchState.capturedFilters;
+        if (snapshot) {
+          saveFiltersFor(switchState.pendingOldEcuId, oldBusForOldEcu, snapshot);
+        }
+      }
+    }
+
+    if (switchState.busChanged && switchState.pendingOldBusId && !switchState.ecuChanged) {
+      if (ecuId.value && switchState.pendingOldBusId) {
+        const k = cacheKey(ecuId.value, switchState.pendingOldBusId);
+        const snapshot = preSnapshot.get(k) || switchState.capturedFilters;
+        if (snapshot) {
+          saveFiltersFor(ecuId.value, switchState.pendingOldBusId, snapshot);
+        }
+      }
+    }
+
+    if (switchState.busChanged && activeBusId.value !== newBusId) {
+      activeBusId.value = newBusId;
+    }
+
+    if (switchState.ecuChanged || switchState.busChanged) {
+      applyPeerSelectionForBus(newEcuId, newBusId);
+    }
+
+    switchState.ecuChanged = false;
+    switchState.busChanged = false;
+    switchState.pendingEcuId = '';
+    switchState.pendingOldEcuId = '';
+    switchState.pendingBusId = '';
+    switchState.pendingOldBusId = '';
+    switchState.capturedFilters = null;
+    switchState.capturedOldBusId = '';
+    switchState.scheduled = false;
+  }
+
+  function scheduleFlush() {
+    if (switchState.scheduled) return;
+    switchState.scheduled = true;
+    nextTick(() => {
+      flushSwitch();
+    });
+  }
 
   watch(
     () => busTabsRef.value,
@@ -34,8 +177,52 @@ export function useEcuMessageWorkspace({ ecuRef, busTabsRef }) {
     { immediate: true }
   );
 
-  const activeTab = computed(() => busTabsRef.value.find((tab) => tab.busId === activeBusId.value) || null);
-  const peerOptions = computed(() => activeTab.value?.peers || []);
+  watch(
+    () => ecuId.value,
+    (newId, oldId) => {
+      if (!oldId) return;
+
+      switchState.capturedFilters = captureCurrentFilters();
+      switchState.capturedOldBusId = activeBusId.value;
+      switchState.pendingOldEcuId = oldId;
+      switchState.pendingEcuId = newId;
+      switchState.ecuChanged = true;
+
+      scheduleFlush();
+    },
+    { immediate: true }
+  );
+
+  watch(
+    () => activeBusId.value,
+    (newBus, oldBus) => {
+      if (!ecuId.value) return;
+      if (!oldBus || oldBus === newBus) return;
+
+      if (!switchState.capturedFilters) {
+        switchState.capturedFilters = captureCurrentFilters();
+      }
+
+      switchState.pendingOldBusId = oldBus;
+      switchState.pendingBusId = newBus;
+      switchState.busChanged = true;
+
+      scheduleFlush();
+    },
+    { immediate: true }
+  );
+  watch(
+    [filterPeerIds, filterProtocols],
+    () => {
+      if (switchState.ecuChanged || switchState.busChanged) return;
+      const ecu = ecuId.value;
+      const bus = activeBusId.value;
+      if (!isWorkspaceConsistent(ecu, bus)) return;
+      const snapshot = captureCurrentFilters();
+      saveFiltersFor(ecu, bus, snapshot);
+      preSnapshot.set(cacheKey(ecu, bus), snapshot);
+    }
+  );
 
   const protocolColor = CanMessage.colorForProtocol;
 

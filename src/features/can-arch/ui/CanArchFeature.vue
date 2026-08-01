@@ -39,6 +39,7 @@
 
             <div v-if="activeTopMenu === 'view'" class="can-top-menu-panel">
               <button class="can-top-menu-item" type="button" @click="runMenuAction(toggleFullscreen)">{{ isFullscreen ? '退出全屏 (Esc)' : '全屏查看 (Ctrl+Shift+F)' }}</button>
+              <button class="can-top-menu-item" type="button" @click="runMenuAction(toggleMagneticHeader)">{{ magneticHeader ? '关闭顶部磁吸' : '开启顶部磁吸' }}</button>
               <template v-if="!ecuMessageEditor.active">
                 <button v-if="isSideCollapsed" class="can-top-menu-item" type="button" @click="runMenuAction(showSideCard)">显示属性面板</button>
                 <button v-else class="can-top-menu-item" type="button" @click="runMenuAction(hideSideCard)">隐藏属性面板</button>
@@ -105,10 +106,11 @@
             @change="handleConfigFileChosen"
           >
         </div>
+        <span class="magnetic-grip" aria-hidden="true"></span>
       </div>
 
-      <div class="can-arch-layout">
-        <div class="can-arch-canvas-card">
+      <div class="can-arch-layout" :class="{ 'editor-active': ecuMessageEditor.active }">
+        <div class="can-arch-canvas-card" :style="ecuMessageEditor.active ? { height: `${editorPanelHeight}px`, minHeight: '480px' } : {}">
           <div v-if="!ecuMessageEditor.active" class="can-arch-canvas-head">
             <strong>CAN 拓扑画布</strong>
             <div class="can-arch-head-actions">
@@ -294,12 +296,14 @@
             </div>
           </div>
           <EcuMessageEditor
-            v-else
+            v-if="ecuMessageEditor.active"
             ref="ecuMessageEditorRef"
             :ecu="ecuMessageEditor.ecu"
             :bus-tabs="ecuMessageEditorBusTabs"
-            :height="canvasHeight"
+            :height="editorPanelHeight"
+            :ecu-nodes="nodes"
             @close="closeEcuMessageEditor"
+            @switch-ecu="switchEcuInEditor"
           />
           <aside v-if="!ecuMessageEditor.active && !isSideCollapsed" class="can-arch-side-card can-arch-side-card-floating">
             <div class="can-arch-canvas-head">
@@ -993,6 +997,8 @@ import {
   extractTopologyFromConfigPayload,
 } from '@/features/can-arch/domain/can-arch-topology.js';
 import { escapeXml } from '@/features/can-arch/domain/can-arch-xml.js';
+import { useMagneticHeader } from '@/features/can-arch/app/composables/useMagneticHeader.js';
+import { useNodeOperations } from '@/features/can-arch/app/composables/useNodeOperations.js';
 
 const props = defineProps({
   active: {
@@ -1015,8 +1021,6 @@ const selectedIds = ref([]);
 const selectedBusIds = ref([]);
 const selectedBusId = ref('');
 const selectedLinkId = ref('');
-const clipboardPayload = ref(null);
-const pasteSerial = ref(0);
 const selectedIdSet = computed(() => new Set(selectedIds.value));
 const canvasRef = ref(null);
 const ecuMessageEditorRef = ref(null);
@@ -1052,6 +1056,32 @@ const contextMenu = ref({
 });
 const isFullscreen = ref(false);
 const isSideCollapsed = ref(false);
+const {
+  magneticHeader,
+  isHeaderPeeking,
+  enableMagneticHeader,
+  disableMagneticHeader,
+  toggleMagneticHeader,
+  initMagneticHeader,
+  teardownMagneticHeader,
+} = useMagneticHeader({
+  isFullscreen,
+  canvasRef,
+  canvasHeight: ref(620),
+  onHeightSync: () => {
+    if (!isFullscreen.value) return;
+    const el = ecuMessageEditor.active ? ecuMessageEditorRef.value?.$el : canvasRef.value;
+    if (!el) return;
+    const bounds = el.getBoundingClientRect();
+    const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+    const available = Math.floor(vh - bounds.top - 10);
+    const h = Math.max(320, available);
+    canvasHeight.value = h;
+    if (ecuMessageEditor.active) {
+      editorPanelHeight.value = h;
+    }
+  },
+});
 const canvasZoom = ref(1);
 const canvasHeight = ref(620);
 const nonFullscreenCanvasHeight = ref(620);
@@ -1066,6 +1096,8 @@ const ecuMessageEditor = reactive({
   ecuId: '',
   ecu: null,
 });
+
+const editorPanelHeight = ref(620);
 
 const formErrors = ref([]);
 const formWarnings = ref([]);
@@ -1169,6 +1201,41 @@ const {
   pushHistorySnapshot: () => pushHistorySnapshot(),
   persistNodes: () => persistNodes(),
   nowIso: () => nowIso(),
+});
+
+const nodeOps = useNodeOperations({
+  nodes,
+  links,
+  buses,
+  selectedIds,
+  selectedBusIds,
+  selectedLinkId,
+  pushHistorySnapshot: () => pushHistorySnapshot(),
+  persistNodes: () => persistNodes(),
+  closeContextMenu: () => closeContextMenu(),
+  syncDraftFromSelected: () => syncDraftFromSelected(),
+  syncBusDraftFromSelected: () => syncBusDraftFromSelected(),
+  syncLinkEditorFromSelected: () => syncLinkEditorFromSelected(),
+  setStatus: (message, isError) => setStatus(message, isError),
+  createNodeName,
+  createBusName,
+  nextNodePosition: () => nextNodePosition(),
+  nextBusPosition: () => nextBusPosition(),
+  normalizeBusColor,
+  ensureUniqueLabel,
+  normalizeLinkStyle,
+  normalizeProtocolsList,
+  normalizeIntegerList,
+  BUS_COLOR_POOL,
+  DEFAULT_BUS_BAUD,
+  NODE_WIDTH,
+  NODE_HEIGHT,
+  BUS_RADIUS,
+  canvasZoom,
+  contextMenu,
+  getCanvasBounds: () => getCanvasBounds(),
+  setBusSelection,
+  clearBusSelection,
 });
 
 const singleSelectedNode = computed(() => {
@@ -1522,6 +1589,8 @@ const panelClassList = computed(() => ({
   active: props.active,
   'is-fullscreen': isFullscreen.value,
   'side-collapsed': isSideCollapsed.value,
+  'magnetic-header': magneticHeader.value,
+  'header-peeking': isHeaderPeeking.value,
 }));
 
 const sceneSize = computed(() => {
@@ -1561,6 +1630,9 @@ function showSideCard() {
 
 function toggleTopMenu(menuName) {
   activeTopMenu.value = activeTopMenu.value === menuName ? '' : menuName;
+  if (activeTopMenu.value && magneticHeader.value) {
+    isHeaderPeeking.value = true;
+  }
 }
 
 function closeTopMenu() {
@@ -1687,15 +1759,7 @@ function resolveDropTargetFromEvent(event, fromRef) {
 }
 
 function deleteSelectedLink() {
-  if (!selectedLinkId.value) return;
-  pushHistorySnapshot();
-  const id = selectedLinkId.value;
-  links.value = links.value.filter((item) => item.id !== id);
-  selectedLinkId.value = '';
-  persistNodes();
-  closeContextMenu();
-  syncLinkEditorFromSelected();
-  setStatus('已删除连线。');
+  return nodeOps.deleteSelectedLink();
 }
 
 function applyActiveStyleToSelectedLink() {
@@ -1915,116 +1979,11 @@ function addAnchorToSelectedLink() {
 }
 
 function copyCurrentSelection() {
-  const nodeSet = new Set(selectedIds.value);
-  const busSet = new Set(selectedBusIds.value);
-
-  if (nodeSet.size === 0 && busSet.size === 0) {
-    setStatus('请先选中一个或多个模块再复制。', true);
-    return;
-  }
-
-  const copiedNodes = nodes.value.filter((item) => nodeSet.has(item.id)).map((item) => ({ ...item, position: { ...item.position } }));
-  const copiedBuses = buses.value.filter((item) => busSet.has(item.id)).map((item) => ({ ...item, position: { ...item.position } }));
-  const copiedLinks = links.value
-    .filter((item) => {
-      const fromType = item.fromType || 'node';
-      const toType = item.toType || 'bus';
-      const fromId = item.fromId || item.nodeId;
-      const toId = item.toId || item.busId;
-      const fromPicked = fromType === 'node' ? nodeSet.has(fromId) : busSet.has(fromId);
-      const toPicked = toType === 'node' ? nodeSet.has(toId) : busSet.has(toId);
-      return fromPicked && toPicked;
-    })
-    .map((item) => ({ ...item }));
-
-  clipboardPayload.value = {
-    nodes: copiedNodes,
-    buses: copiedBuses,
-    links: copiedLinks,
-  };
-  setStatus(`已复制 ${copiedNodes.length} 个 ECU、${copiedBuses.length} 个 BUS。`);
+  return nodeOps.copyCurrentSelection();
 }
 
 function pasteClipboard(point = null) {
-  const payload = clipboardPayload.value;
-  if (!payload || (!payload.nodes?.length && !payload.buses?.length)) {
-    setStatus('剪贴板为空，无法粘贴。', true);
-    return;
-  }
-
-  pasteSerial.value += 1;
-  const offset = 28 * pasteSerial.value;
-  const allItems = [...payload.nodes, ...payload.buses];
-  const minX = Math.min(...allItems.map((item) => item.position.x));
-  const minY = Math.min(...allItems.map((item) => item.position.y));
-  const shiftX = point ? Math.round(point.x - minX) : offset;
-  const shiftY = point ? Math.round(point.y - minY) : offset;
-
-  pushHistorySnapshot();
-
-  const nodeNameSet = new Set(nodes.value.map((item) => item.name));
-  const busNameSet = new Set(buses.value.map((item) => item.name));
-  const nodeIdMap = new Map();
-  const busIdMap = new Map();
-
-  for (const sourceNode of payload.nodes) {
-    const id = crypto.randomUUID();
-    nodeIdMap.set(sourceNode.id, id);
-    nodes.value.push({
-      ...sourceNode,
-      id,
-      name: ensureUniqueLabel(sourceNode.name, nodeNameSet),
-      position: {
-        x: Math.round(sourceNode.position.x + shiftX),
-        y: Math.round(sourceNode.position.y + shiftY),
-      },
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-    });
-  }
-
-  for (const sourceBus of payload.buses) {
-    const id = crypto.randomUUID();
-    busIdMap.set(sourceBus.id, id);
-    buses.value.push({
-      ...sourceBus,
-      id,
-      name: ensureUniqueLabel(sourceBus.name, busNameSet),
-      position: {
-        x: Math.round(sourceBus.position.x + shiftX),
-        y: Math.round(sourceBus.position.y + shiftY),
-      },
-    });
-  }
-
-  for (const sourceLink of payload.links) {
-    const fromType = sourceLink.fromType || 'node';
-    const toType = sourceLink.toType || 'bus';
-    const sourceFromId = sourceLink.fromId || sourceLink.nodeId;
-    const sourceToId = sourceLink.toId || sourceLink.busId;
-    const fromId = fromType === 'node' ? nodeIdMap.get(sourceFromId) : busIdMap.get(sourceFromId);
-    const toId = toType === 'node' ? nodeIdMap.get(sourceToId) : busIdMap.get(sourceToId);
-    if (!fromId || !toId) continue;
-    links.value.push({
-      id: crypto.randomUUID(),
-      fromType,
-      fromId,
-      toType,
-      toId,
-      fromAnchorEdge: sourceLink.fromAnchorEdge || sourceLink.anchorEdge || 'auto',
-      fromAnchorOffset: Number.isFinite(Number(sourceLink.fromAnchorOffset)) ? Number(sourceLink.fromAnchorOffset) : (Number.isFinite(Number(sourceLink.anchorOffset)) ? Number(sourceLink.anchorOffset) : 0.5),
-      toAnchorEdge: sourceLink.toAnchorEdge || 'auto',
-      toAnchorOffset: Number.isFinite(Number(sourceLink.toAnchorOffset)) ? Number(sourceLink.toAnchorOffset) : 0.5,
-      style: normalizeLinkStyle(sourceLink.style),
-      protocols: normalizeProtocolsList(sourceLink.protocols),
-      j1939Addresses: normalizeIntegerList(sourceLink.j1939Addresses),
-      canopenNodeIds: normalizeIntegerList(sourceLink.canopenNodeIds),
-      anchors: Array.isArray(sourceLink.anchors) ? sourceLink.anchors.map((item) => ({ x: Number(item?.x), y: Number(item?.y) })).filter((item) => Number.isFinite(item.x) && Number.isFinite(item.y)) : [],
-    });
-  }
-
-  persistNodes();
-  setStatus(`已粘贴 ${payload.nodes.length} 个 ECU、${payload.buses.length} 个 BUS。`);
+  return nodeOps.pasteClipboard(point);
 }
 
 function getCanvasBounds() {
@@ -2415,117 +2374,35 @@ function toggleLinkEditorProtocol(protocol, checked) {
 }
 
 function selectOnly(nodeId) {
-  selectedIds.value = [nodeId];
-  clearBusSelection({ sync: false });
-  selectedLinkId.value = '';
-  syncBusDraftFromSelected();
-  syncDraftFromSelected();
+  return nodeOps.selectOnly(nodeId);
 }
 
 function selectBusOnly(busId) {
-  setBusSelection([busId], { sync: false });
-  selectedIds.value = [];
-  selectedLinkId.value = '';
-  syncDraftFromSelected();
-  syncBusDraftFromSelected();
+  return nodeOps.selectBusOnly(busId);
 }
 
 function resolveSpawnPosition(position) {
-  if (position instanceof Event) {
-    return nextNodePosition();
-  }
-  const x = Number(position?.x);
-  const y = Number(position?.y);
-  if (!Number.isFinite(x) || !Number.isFinite(y)) {
-    return nextNodePosition();
-  }
-  return {
-    x: Math.max(0, Math.round(x)),
-    y: Math.max(0, Math.round(y)),
-  };
+  return nodeOps.resolveSpawnPosition(position);
 }
 
 function addNode(position) {
-  pushHistorySnapshot();
-  const spawn = resolveSpawnPosition(position);
-  const existingNames = new Set(nodes.value.map((item) => item.name));
-  const newNode = {
-    id: crypto.randomUUID(),
-    name: createNodeName(existingNames),
-    note: '',
-    position: spawn,
-    protocols: [],
-    j1939Addresses: [],
-    canopenNodeIds: [],
-    baseColor: DEFAULT_NODE_BASE_COLOR,
-    source: 'manual',
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
-  };
-
-  nodes.value.push(newNode);
-  persistNodes();
-  selectOnly(newNode.id);
-  setStatus(`已新增节点 ${newNode.name}`);
-  closeContextMenu();
+  return nodeOps.addNode(position);
 }
 
 function addBus(position) {
-  pushHistorySnapshot();
-  const existingNames = new Set(buses.value.map((item) => item.name));
-  const spawn = position && Number.isFinite(Number(position.x)) && Number.isFinite(Number(position.y))
-    ? { x: Math.round(Number(position.x)), y: Math.round(Number(position.y)) }
-    : nextBusPosition();
-
-  const bus = {
-    id: crypto.randomUUID(),
-    name: createBusName(existingNames),
-    baudRate: DEFAULT_BUS_BAUD,
-    color: normalizeBusColor(BUS_COLOR_POOL[buses.value.length % BUS_COLOR_POOL.length]),
-    position: spawn,
-  };
-
-  buses.value.push(bus);
-  persistNodes();
-  selectBusOnly(bus.id);
-  closeContextMenu();
-  setStatus(`已新增 CAN BUS：${bus.name}`);
+  return nodeOps.addBus(position);
 }
 
 function addBusAtContextMenu() {
-  const point = contextMenu.value.canvasPoint;
-  if (!point) {
-    addBus(nextBusPosition());
-    return;
-  }
-  addBus({
-    x: Math.round(point.x - BUS_RADIUS),
-    y: Math.round(point.y - BUS_RADIUS),
-  });
+  return nodeOps.addBusAtContextMenu();
 }
 
 function pasteAtContextMenu() {
-  const point = contextMenu.value.canvasPoint;
-  pasteClipboard(point || null);
-  closeContextMenu();
+  return nodeOps.pasteAtContextMenu();
 }
 
 function addNodeAtContextMenu() {
-  const point = contextMenu.value.canvasPoint;
-  if (!point) {
-    addNode(nextNodePosition());
-    return;
-  }
-
-  const bounds = getCanvasBounds();
-  const logicalWidth = bounds ? Math.floor(bounds.width / canvasZoom.value) : Infinity;
-  const logicalHeight = bounds ? Math.floor(bounds.height / canvasZoom.value) : Infinity;
-  const maxX = Number.isFinite(logicalWidth) ? Math.max(0, logicalWidth - NODE_WIDTH) : Infinity;
-  const maxY = Number.isFinite(logicalHeight) ? Math.max(0, logicalHeight - NODE_HEIGHT) : Infinity;
-  addNode({
-    x: Math.max(0, Math.min(maxX, Math.round(point.x - NODE_WIDTH / 2))),
-    y: Math.max(0, Math.min(maxY, Math.round(point.y - NODE_HEIGHT / 2))),
-  });
+  return nodeOps.addNodeAtContextMenu();
 }
 
 function toggleFullscreen() {
@@ -2550,6 +2427,20 @@ function openEcuMessageEditor(node) {
   ecuMessageEditor.ecu = node;
   ecuMessageEditor.active = true;
   setStatus(`进入 ECU 报文编辑：${node.name}`);
+  if (isFullscreen.value) {
+    nextTick(() => {
+      syncFullscreenCanvasHeight();
+    });
+  } else {
+    const vh = window.innerHeight || document.documentElement.clientHeight || 900;
+    const headerEl = document.querySelector('.can-arch-header');
+    const headerH = headerEl ? headerEl.getBoundingClientRect().height : 0;
+    const topOffset = headerH + 160;
+    const available = Math.floor(vh - topOffset);
+    const h = Math.max(480, Math.min(available, 900));
+    canvasHeight.value = h;
+    editorPanelHeight.value = h;
+  }
 }
 
 function closeEcuMessageEditor() {
@@ -2558,16 +2449,34 @@ function closeEcuMessageEditor() {
   ecuMessageEditor.ecuId = '';
   ecuMessageEditor.ecu = null;
   setStatus(`已返回 CAN 画布（${name} 报文编辑已关闭）。`);
+  if (isFullscreen.value) {
+    nextTick(() => {
+      syncFullscreenCanvasHeight();
+    });
+  }
+}
+
+function switchEcuInEditor(targetEcuId) {
+  const node = nodes.value.find((item) => item.id === targetEcuId);
+  if (!node) return;
+  ecuMessageEditor.ecuId = node.id;
+  ecuMessageEditor.ecu = node;
+  setStatus(`切换到 ECU 报文编辑：${node.name}`);
 }
 
 function syncFullscreenCanvasHeight() {
   if (!isFullscreen.value) return;
-  const canvasElement = canvasRef.value;
+  const editorEl = ecuMessageEditor.active ? ecuMessageEditorRef.value?.$el : null;
+  const canvasElement = editorEl || canvasRef.value;
   if (!canvasElement) return;
   const bounds = canvasElement.getBoundingClientRect();
   const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
   const available = Math.floor(viewportHeight - bounds.top - 10);
-  canvasHeight.value = Math.max(320, available);
+  const h = Math.max(320, available);
+  canvasHeight.value = h;
+  if (ecuMessageEditor.active) {
+    editorPanelHeight.value = h;
+  }
 }
 
 function onWindowResize() {
@@ -2576,57 +2485,11 @@ function onWindowResize() {
 }
 
 function deleteSelectedNodes(options = {}) {
-  if (selectedIds.value.length === 0) return;
-  if (!options.skipHistory) {
-    pushHistorySnapshot();
-  }
-  const selected = new Set(selectedIds.value);
-  nodes.value = nodes.value.filter((node) => !selected.has(node.id));
-  links.value = links.value.filter((item) => {
-    const fromType = item.fromType || 'node';
-    const toType = item.toType || 'bus';
-    const fromId = item.fromId || item.nodeId;
-    const toId = item.toId || item.busId;
-    if (fromType === 'node' && selected.has(fromId)) return false;
-    if (toType === 'node' && selected.has(toId)) return false;
-    return true;
-  });
-  selectedIds.value = [];
-  clearBusSelection({ sync: false });
-  selectedLinkId.value = '';
-  syncDraftFromSelected();
-  syncBusDraftFromSelected();
-  persistNodes();
-  if (options.skipStatus !== true) {
-    setStatus('已删除选中节点。');
-  }
-  closeContextMenu();
+  return nodeOps.deleteSelectedNodes(options);
 }
 
 function deleteSelectedBus(options = {}) {
-  if (selectedBusIds.value.length === 0) return;
-  if (!options.skipHistory) {
-    pushHistorySnapshot();
-  }
-  const busIdSet = new Set(selectedBusIds.value);
-  buses.value = buses.value.filter((item) => !busIdSet.has(item.id));
-  links.value = links.value.filter((item) => {
-    const fromType = item.fromType || 'node';
-    const toType = item.toType || 'bus';
-    const fromId = item.fromId || item.nodeId;
-    const toId = item.toId || item.busId;
-    if (fromType === 'bus' && busIdSet.has(fromId)) return false;
-    if (toType === 'bus' && busIdSet.has(toId)) return false;
-    return true;
-  });
-  clearBusSelection({ sync: false });
-  selectedLinkId.value = '';
-  syncBusDraftFromSelected();
-  persistNodes();
-  if (options.skipStatus !== true) {
-    setStatus('已删除选中 CAN BUS。');
-  }
-  closeContextMenu();
+  return nodeOps.deleteSelectedBus(options);
 }
 
 function deleteSelected() {
@@ -2634,25 +2497,7 @@ function deleteSelected() {
     ecuMessageEditorRef.value?.deleteSelection?.();
     return;
   }
-
-  if (selectedLinkId.value) {
-    deleteSelectedLink();
-    return;
-  }
-
-  const hasNodeSelection = selectedIds.value.length > 0;
-  const busIdsToDelete = [...selectedBusIds.value];
-  if (!hasNodeSelection && busIdsToDelete.length === 0) return;
-
-  pushHistorySnapshot();
-  if (hasNodeSelection) {
-    deleteSelectedNodes({ skipHistory: true, skipStatus: true });
-  }
-  if (busIdsToDelete.length > 0) {
-    setBusSelection(busIdsToDelete, { sync: false });
-    deleteSelectedBus({ skipHistory: true, skipStatus: true });
-  }
-  setStatus('已删除选中对象。');
+  return nodeOps.deleteSelected();
 }
 
 function connectModules(fromRef, toRef, options = {}) {
@@ -2971,10 +2816,14 @@ function onCanvasResizePointerDown(event) {
   if (isFullscreen.value) return;
   if (event.button !== 0) return;
 
+  const currentHeight = ecuMessageEditor.active
+    ? Number(editorPanelHeight.value) || 620
+    : Number(canvasHeight.value) || 620;
+
   canvasResizeState = {
     pointerId: event.pointerId,
     startY: event.clientY,
-    startHeight: Number(canvasHeight.value) || 620,
+    startHeight: currentHeight,
     pointerTarget: event.currentTarget,
   };
 
@@ -2988,7 +2837,11 @@ function onCanvasResizePointerDown(event) {
 function onCanvasResizePointerMove(event) {
   if (!canvasResizeState || canvasResizeState.pointerId !== event.pointerId) return;
   const dy = event.clientY - canvasResizeState.startY;
-  canvasHeight.value = Math.max(320, Math.round(canvasResizeState.startHeight + dy));
+  const newHeight = Math.max(320, Math.round(canvasResizeState.startHeight + dy));
+  canvasHeight.value = newHeight;
+  if (ecuMessageEditor.active) {
+    editorPanelHeight.value = newHeight;
+  }
 }
 
 function onCanvasResizePointerUp(event) {
@@ -4266,11 +4119,12 @@ onMounted(() => {
   setStatus('CAN 节点设计器已就绪。');
   window.addEventListener('pointerdown', onDocumentPointerDown);
   window.addEventListener('keydown', handleDocumentKeydown);
-  window.addEventListener('pointercancel', onDragPointerCancel);
+  window.addEventListener('pointer.cancel', onDragPointerCancel);
   window.addEventListener('blur', onDragPointerCancel);
   window.addEventListener('resize', onWindowResize);
   document.addEventListener('contextmenu', onDocumentContextMenuCapture, true);
   deleteKeyBound = true;
+  initMagneticHeader();
 });
 
 onBeforeUnmount(() => {
@@ -4293,10 +4147,11 @@ onBeforeUnmount(() => {
     deleteKeyBound = false;
   }
   window.removeEventListener('pointerdown', onDocumentPointerDown);
-  window.removeEventListener('pointercancel', onDragPointerCancel);
+  window.removeEventListener('pointer.cancel', onDragPointerCancel);
   window.removeEventListener('blur', onDragPointerCancel);
   window.removeEventListener('resize', onWindowResize);
   document.removeEventListener('contextmenu', onDocumentContextMenuCapture, true);
+  teardownMagneticHeader();
 });
 
 watch(

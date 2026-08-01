@@ -887,6 +887,10 @@ body.theme-warm-editorial {
     flex-wrap: wrap;
 }
 
+.can-arch-header .magnetic-grip {
+    display: none;
+}
+
 .can-arch-title {
     margin: 0;
     font-family: var(--font-display);
@@ -1046,6 +1050,10 @@ body.theme-warm-editorial {
     display: block;
     width: 100%;
     min-width: 0;
+}
+
+.can-arch-layout.editor-active {
+    min-height: 480px;
 }
 
 .can-arch-panel.container-xl {
@@ -1231,6 +1239,66 @@ body.theme-warm-editorial {
 
 .is-fullscreen .can-arch-header {
     top: 0;
+}
+
+.magnetic-header .can-arch-header {
+    position: fixed;
+    top: 76px;
+    left: 0;
+    right: 0;
+    width: auto;
+    z-index: 25;
+    transform: translateY(calc(-100% + 14px));
+    transition: transform 0.28s cubic-bezier(0.4, 0.0, 0.2, 1), box-shadow 0.28s ease;
+    box-shadow: 0 6px 18px rgba(48, 34, 24, 0.14);
+    overflow: hidden;
+}
+
+.magnetic-header .can-arch-header .magnetic-grip {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 48px;
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(48, 34, 24, 0.22);
+    pointer-events: none;
+    opacity: 1;
+    transition: opacity 0.22s ease;
+}
+
+.magnetic-header.header-peeking .can-arch-header .magnetic-grip {
+    opacity: 0;
+}
+
+.magnetic-header.header-peeking .can-arch-header {
+    transform: translateY(0);
+    box-shadow: 0 14px 32px rgba(48, 34, 24, 0.22);
+    overflow: visible;
+}
+
+.is-fullscreen.magnetic-header .can-arch-header {
+    top: 0;
+    z-index: 9999;
+}
+
+.magnetic-header .can-arch-header .can-arch-toolbar-wrap,
+.magnetic-header .can-arch-header .can-arch-title,
+.magnetic-header .can-arch-header .can-arch-note {
+    transition: opacity 0.22s ease;
+}
+
+.magnetic-header:not(.header-peeking) .can-arch-header .can-arch-toolbar-wrap,
+.magnetic-header:not(.header-peeking) .can-arch-header .can-arch-note {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.magnetic-header:not(.header-peeking) .can-arch-header .can-arch-title {
+    opacity: 0.55;
+    transform: translateY(2px);
 }
 
 .is-fullscreen .can-arch-canvas {

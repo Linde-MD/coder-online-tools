@@ -66,7 +66,7 @@ export function nodeProtocolGroups(node) {
   }
 
   if (hasJ1939) {
-    const addrList = node.j1939Addresses.map((id) => `PGN ${id}`).join(', ') || '未配置 PGN';
+    const addrList = node.j1939Addresses.map((id) => `${id}`).join(', ') || '地址缺失';
     groups.push({
       key: 'j1939',
       label: 'J1939',
@@ -78,7 +78,7 @@ export function nodeProtocolGroups(node) {
   }
 
   if (hasCanopen) {
-    const idList = node.canopenNodeIds.map((id) => `Node ${id}`).join(', ') || '未配置 NodeId';
+    const idList = node.canopenNodeIds.map((id) => `${id}`).join(', ') || 'Node-Id缺失';
     groups.push({
       key: 'canopen',
       label: 'CANopen',

@@ -1,296 +1,153 @@
-import { computed, reactive, ref, watch } from 'vue';
-import {
-  STORAGE_KEY,
-  AUTO_SAVE_INTERVAL_MS,
-  HISTORY_LIMIT,
-  CONFIG_VERSION,
-  CONFIG_SCHEMA,
-} from '../domain/can-arch-constants.js';
-import { CanArchitectureGraph, CanNode, CanBus } from '../domain/index.js';
-import { HistoryManager, LocalStorageRepository } from '../infra/index.js';
+import { reactive, ref, computed } from 'vue';
 
-const LEGACY_NODES_KEY = 'coderOnlineTools.canArch.nodes.v1';
-const LEGACY_SETTINGS_KEY = 'coderOnlineTools.canArch.settings.v1';
+export function useCanArchitectureStore({
+  initialNodes = [],
+  initialBuses = [],
+  initialLinks = [],
+} = {}) {
+  const nodes = ref([...initialNodes]);
+  const buses = ref([...initialBuses]);
+  const links = ref([...initialLinks]);
 
-function buildLegacyNodesRepo() {
-  return new LocalStorageRepository(LEGACY_NODES_KEY, JSON, { suppressErrors: true });
-}
+  const selectedIds = ref([]);
+  const selectedBusIds = ref([]);
+  const selectedBusId = ref('');
+  const selectedLinkId = ref('');
 
-function buildStorageRepo() {
-  return new LocalStorageRepository(STORAGE_KEY, JSON, {
-    compatKeys: [LEGACY_SETTINGS_KEY, LEGACY_NODES_KEY],
-    suppressErrors: true,
-  });
-}
+  const selectedIdSet = computed(() => new Set(selectedIds.value));
 
-function nowIso() {
-  return new Date().toISOString();
-}
+  const isFullscreen = ref(false);
+  const isSideCollapsed = ref(false);
 
-function normalizeSnapshotForRestore(payload) {
-  if (!payload || typeof payload !== 'object') return null;
-  if (Array.isArray(payload.nodes)) {
-    return {
-      nodes: payload.nodes,
-      buses: Array.isArray(payload.buses) ? payload.buses : [],
-      links: Array.isArray(payload.links) ? payload.links : [],
-      config:
-        typeof payload.config === 'object' && payload.config !== null
-          ? payload.config
-          : {
-              linkStyle: payload.linkStyle || 'polyline',
-              showGrid: payload.showGrid !== false,
-              backgroundColor: payload.backgroundColor || '#fdfcf9',
-              accentColor: payload.accentColor || '#16181b',
-              gridSize: payload.gridSize || 20,
-              autoSave: payload.autoSave !== false,
-              showBusColors: payload.showBusColors !== false,
-              showLegend: payload.showLegend !== false,
-            },
-    };
-  }
-  if (Array.isArray(payload)) {
-    return { nodes: payload, buses: [], links: [], config: {} };
-  }
-  return null;
-}
+  const canvasZoom = ref(1);
+  const canvasHeight = ref(620);
+  const nonFullscreenCanvasHeight = ref(620);
 
-export function useCanArchitectureStore() {
-  const storageRepo = buildStorageRepo();
-  const legacyNodesRepo = buildLegacyNodesRepo();
-  const history = new HistoryManager(HISTORY_LIMIT);
+  const activeTopMenu = ref('');
+  const activeLinkStyle = ref('polyline');
 
-  const graph = reactive(new CanArchitectureGraph());
-
-  const nodes = computed({
-    get: () => graph.nodes,
-    set: (value) => {
-      graph.nodes.splice(0, graph.nodes.length, ...value);
-    },
-  });
-  const buses = computed({
-    get: () => graph.buses,
-    set: (value) => {
-      graph.buses.splice(0, graph.buses.length, ...value);
-    },
-  });
-  const links = computed({
-    get: () => graph.links,
-    set: (value) => {
-      graph.links.splice(0, graph.links.length, ...value);
-    },
-  });
-  const appConfig = computed({
-    get: () => graph.config,
-    set: (value) => graph.updateConfig(value),
+  const exportPrefs = reactive({
+    includeBackground: true,
+    autoCrop: true,
   });
 
-  const statusText = ref('就绪');
-  const statusError = ref('');
-  const saveState = ref('saved');
-  const autoSaveEnabled = computed(() => Boolean(appConfig.value.autoSave));
-  const canUndo = ref(false);
-  const canRedo = ref(false);
+  const ecuMessageEditor = reactive({
+    active: false,
+    ecuId: '',
+    ecu: null,
+  });
 
-  let _autoSaveTimer = null;
+  const editorPanelHeight = ref(620);
 
-  function setStatus(text, options = {}) {
-    statusText.value = String(text || '');
-    if (options.error) {
-      statusError.value = String(options.error);
-    } else if (options.clearError) {
-      statusError.value = '';
+  const singleSelectedNode = computed(() => {
+    if (selectedIds.value.length !== 1) return null;
+    return nodes.value.find((item) => item.id === selectedIds.value[0]) || null;
+  });
+
+  const singleSelectedBus = computed(() => {
+    if (selectedBusIds.value.length !== 1) return null;
+    return buses.value.find((item) => item.id === selectedBusIds.value[0]) || null;
+  });
+
+  const singleSelectedLink = computed(() => {
+    if (!selectedLinkId.value) return null;
+    return links.value.find((item) => item.id === selectedLinkId.value) || null;
+  });
+
+  const sidePanelTitle = computed(() => {
+    if (singleSelectedLink.value) return '连线属性面板';
+    if (singleSelectedBus.value) return 'CAN BUS 属性面板';
+    return 'ECU 属性面板';
+  });
+
+  const hasAnySelectionForDelete = computed(() => {
+    if (ecuMessageEditor.active) {
+      return Boolean(ecuMessageEditorRef.value?.hasSelection);
     }
-  }
+    return Boolean(selectedLinkId.value) || selectedIds.value.length > 0 || selectedBusIds.value.length > 0;
+  });
 
-  function markDirty() {
-    saveState.value = 'dirty';
-  }
+  const hasAnySelectionForExport = computed(() => {
+    return Boolean(selectedLinkId.value) || selectedIds.value.length > 0 || selectedBusIds.value.length > 0;
+  });
 
-  function _refreshHistoryFlags() {
-    canUndo.value = history.canUndo;
-    canRedo.value = history.canRedo;
-  }
-
-  function pushHistorySnapshot() {
-    history.snapshot(() => graph.snapshot());
-    _refreshHistoryFlags();
-  }
-
-  function undo() {
-    const current = graph.snapshot();
-    const ok = history.undo((prevSnapshot) => {
-      graph.restore(prevSnapshot);
-      return current;
-    });
-    if (ok) {
-      markDirty();
-      setStatus('已撤销上一步操作。', { clearError: true });
-    }
-    _refreshHistoryFlags();
-    return ok;
-  }
-
-  function redo() {
-    const current = graph.snapshot();
-    const ok = history.redo((nextSnapshot) => {
-      graph.restore(nextSnapshot);
-      return current;
-    });
-    if (ok) {
-      markDirty();
-      setStatus('已重做。', { clearError: true });
-    }
-    _refreshHistoryFlags();
-    return ok;
-  }
-
-  function persistGraph(options = {}) {
-    const payload = {
-      schema: CONFIG_SCHEMA,
-      version: CONFIG_VERSION,
-      savedAt: nowIso(),
-      ...graph.snapshot(),
-    };
-    const ok = storageRepo.save(payload);
-    if (ok) {
-      saveState.value = 'saved';
-      if (options.setStatus !== false) {
-        setStatus(`已自动保存（${new Date().toLocaleTimeString()}）。`, { clearError: true });
+  const ecuMessageEditorBusTabs = computed(() => {
+    if (!ecuMessageEditor.active || !ecuMessageEditor.ecuId) return [];
+    const currentNode = nodes.value.find((item) => item.id === ecuMessageEditor.ecuId);
+    if (!currentNode) return [];
+    const tabs = [];
+    for (const bus of buses.value) {
+      const peerIds = new Set();
+      for (const link of links.value) {
+        const linkBusId = resolveLinkBusId(link);
+        if (linkBusId !== bus.id) continue;
+        const linkNodeId = resolveLinkNodeId(link);
+        if (!linkNodeId) continue;
+        if (linkNodeId === currentNode.id) continue;
+        const peer = nodes.value.find((item) => item.id === linkNodeId);
+        if (!peer) continue;
+        peerIds.add(peer.id);
       }
-    }
-    return ok;
-  }
 
-  function _scheduleAutoSave() {
-    if (!autoSaveEnabled.value) return;
-    _clearAutoSaveTimer();
-    _autoSaveTimer = window.setTimeout(() => {
-      if (saveState.value === 'dirty') persistGraph({ setStatus: true });
-    }, AUTO_SAVE_INTERVAL_MS);
-  }
+      const connectedToBus = links.value.some((link) => resolveLinkBusId(link) === bus.id && resolveLinkNodeId(link) === currentNode.id);
+      if (!connectedToBus) continue;
 
-  function _clearAutoSaveTimer() {
-    if (_autoSaveTimer != null) {
-      window.clearTimeout(_autoSaveTimer);
-      _autoSaveTimer = null;
-    }
-  }
-
-  function loadFromStorage() {
-    const raw = storageRepo.load();
-    if (raw && !Array.isArray(raw) && typeof raw === 'object' && !Array.isArray(raw.nodes)) {
-      const legacyNodes = legacyNodesRepo.load();
-      if (Array.isArray(legacyNodes) && legacyNodes.length > 0) {
-        graph.restore({ nodes: legacyNodes, buses: [], links: [], config: raw });
-        history.reset();
-        setStatus('已加载历史节点数据（从旧版本兼容格式恢复）。', { clearError: true });
-        return true;
-      }
-    }
-    const normalized = normalizeSnapshotForRestore(raw);
-    if (normalized) {
-      graph.restore(normalized);
-    }
-    history.reset();
-    saveState.value = 'saved';
-    _refreshHistoryFlags();
-    return normalized != null;
-  }
-
-  function resetAll(newGraph = null) {
-    if (newGraph instanceof CanArchitectureGraph) {
-      graph.restore(newGraph.snapshot());
-    } else {
-      const fresh = newGraph && typeof newGraph === 'object' ? newGraph : {};
-      graph.restore({
-        nodes: fresh.nodes ?? [],
-        buses: fresh.buses ?? [],
-        links: fresh.links ?? [],
-        config: { ...graph.config, ...(fresh.config ?? {}) },
+      tabs.push({
+        busId: bus.id,
+        busName: bus.name,
+        peers: [...peerIds].map((id) => {
+          const peer = nodes.value.find((item) => item.id === id);
+          return { id, name: peer?.name || id };
+        }),
       });
     }
-    history.reset();
-    _refreshHistoryFlags();
-    markDirty();
+    return tabs;
+  });
+
+  const canAddAnchorInContextMenu = computed(() => {
+    if (contextMenu.value.target !== 'link') return false;
+    const linkId = contextMenu.value.linkId || selectedLinkId.value;
+    if (!linkId) return false;
+    const link = links.value.find((item) => item.id === linkId);
+    return link?.style === 'polyline';
+  });
+
+  function resolveLinkBusId(link) {
+    return link.busId || (link.toType === 'bus' ? link.toId : link.fromType === 'bus' ? link.fromId : '');
   }
 
-  function addNode(data = {}) {
-    const node = new CanNode(data);
-    graph.addNode(node);
-    return node;
+  function resolveLinkNodeId(link) {
+    return link.nodeId || (link.fromType === 'node' ? link.fromId : link.toType === 'node' ? link.toId : '');
   }
-
-  function addBus(data = {}) {
-    const bus = new CanBus(data);
-    graph.addBus(bus);
-    return bus;
-  }
-
-  function removeNodeById(id) {
-    const removed = graph.removeNode(id);
-    if (removed) markDirty();
-    return removed;
-  }
-
-  function removeBusById(id) {
-    const removed = graph.removeBus(id);
-    if (removed) markDirty();
-    return removed;
-  }
-
-  function removeLinkById(id) {
-    const removed = graph.removeLink(id);
-    if (removed) markDirty();
-    return removed;
-  }
-
-  function touchAllSelected(nodeIds) {
-    const set = new Set(Array.isArray(nodeIds) ? nodeIds : []);
-    for (const node of graph.nodes) {
-      if (set.has(node.id)) node.touch();
-    }
-  }
-
-  watch(
-    () => graph.snapshot(),
-    () => {
-      markDirty();
-      _scheduleAutoSave();
-    },
-    { deep: true }
-  );
 
   return {
-    graph,
     nodes,
     buses,
     links,
-    appConfig,
-    statusText,
-    statusError,
-    saveState,
-    autoSaveEnabled,
-    canUndo,
-    canRedo,
-    history,
-    setStatus,
-    markDirty,
-    pushHistorySnapshot,
-    undo,
-    redo,
-    persistGraph,
-    loadFromStorage,
-    resetAll,
-    addNode,
-    addBus,
-    removeNodeById,
-    removeBusById,
-    removeLinkById,
-    touchAllSelected,
-    nowIso,
-    dispose() {
-      _clearAutoSaveTimer();
-    },
+    selectedIds,
+    selectedBusIds,
+    selectedBusId,
+    selectedLinkId,
+    selectedIdSet,
+    isFullscreen,
+    isSideCollapsed,
+    canvasZoom,
+    canvasHeight,
+    nonFullscreenCanvasHeight,
+    activeTopMenu,
+    activeLinkStyle,
+    exportPrefs,
+    ecuMessageEditor,
+    editorPanelHeight,
+    singleSelectedNode,
+    singleSelectedBus,
+    singleSelectedLink,
+    sidePanelTitle,
+    hasAnySelectionForDelete,
+    hasAnySelectionForExport,
+    ecuMessageEditorBusTabs,
+    canAddAnchorInContextMenu,
+    resolveLinkBusId,
+    resolveLinkNodeId,
   };
 }

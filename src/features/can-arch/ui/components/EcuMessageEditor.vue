@@ -1,58 +1,56 @@
 <template>
-  <div class="ecu-msg-editor" :style="{ height: `${height}px` }" @contextmenu.prevent>
+  <div class="ecu-msg-editor" ref="editorRef" :style="{ height: `${height || 620}px`, minHeight: '400px' }" @contextmenu.prevent>
     <div class="ecu-msg-editor-head">
       <button class="ecu-msg-back-icon" type="button" title="返回画布" @click="$emit('close')">
         <span aria-hidden="true">↩</span>
       </button>
-      <div class="ecu-msg-title-wrap">
-        <div class="ecu-msg-title">{{ ecu?.name || 'ECU' }} 报文编辑</div>
-        <div class="ecu-msg-subtitle">按 CAN BUS 分页管理收发报文</div>
+      <div class="ecu-msg-ecu-switch">
+        <select
+          class="ecu-msg-ecu-select"
+          :value="ecu?.id"
+          @change="(e) => onEcuSwitch(e.target.value)"
+        >
+          <option v-for="n in ecuNodes" :key="n.id" :value="n.id">{{ n.name }}</option>
+        </select>
       </div>
-    </div>
-
-    <div class="ecu-msg-tabs" role="tablist" aria-label="CAN BUS 标签页">
+      <div class="ecu-msg-tabs" role="tablist" aria-label="CAN BUS 标签页">
+        <button
+          v-for="(tab, idx) in busTabs"
+          :key="tab.busId"
+          class="ecu-msg-tab"
+          :class="{ active: activeBusId === tab.busId }"
+          type="button"
+          role="tab"
+          :aria-selected="activeBusId === tab.busId"
+          @click="activeBusId = tab.busId"
+        >
+          <span class="ecu-msg-tab-index">{{ idx + 1 }}</span>
+          <span class="ecu-msg-tab-name">{{ tab.busName }}</span>
+        </button>
+      </div>
       <button
-        v-for="(tab, idx) in busTabs"
-        :key="tab.busId"
-        class="ecu-msg-tab"
-        :class="{ active: activeBusId === tab.busId }"
+        v-if="activeTab"
+        class="ecu-msg-filter-toggle"
         type="button"
-        role="tab"
-        :aria-selected="activeBusId === tab.busId"
-        @click="activeBusId = tab.busId"
+        :title="filterPanelOpen ? '隐藏过滤器' : '显示过滤器'"
+        @click="filterPanelOpen = !filterPanelOpen"
       >
-        <span class="ecu-msg-tab-index">{{ idx + 1 }}</span>
-        <span class="ecu-msg-tab-name">{{ tab.busName }}</span>
+        <span aria-hidden="true">⚙</span>
       </button>
     </div>
 
-    <div v-if="activeTab" class="ecu-msg-filters">
-      <div class="ecu-filter-group">
-        <div class="ecu-filter-head">
-          <span>对端 ECU</span>
-          <div class="ecu-filter-actions">
-            <button type="button" @click="selectAllPeerFilters">全选</button>
-            <button type="button" @click="clearPeerFilters">全不选</button>
-          </div>
-        </div>
-        <select v-model="filterPeerIds" class="form-select form-select-sm" multiple>
-          <option v-for="peer in peerOptions" :key="peer.id" :value="peer.id">{{ peer.name }}</option>
-        </select>
-      </div>
-
-      <div class="ecu-filter-group">
-        <div class="ecu-filter-head">
-          <span>协议</span>
-          <div class="ecu-filter-actions">
-            <button type="button" @click="selectAllProtocolFilters">全选</button>
-            <button type="button" @click="clearProtocolFilters">全不选</button>
-          </div>
-        </div>
-        <select v-model="filterProtocols" class="form-select form-select-sm" multiple>
-          <option v-for="protocol in protocolOptions" :key="protocol.value" :value="protocol.value">{{ protocol.label }}</option>
-        </select>
-      </div>
-    </div>
+    <EcuMessageFilterPanel
+      v-if="activeTab"
+      v-show="filterPanelOpen"
+      :peer-options="peerOptions"
+      :protocol-options="protocolOptions"
+      :filter-peer-ids="filterPeerIds"
+      :filter-protocols="filterProtocols"
+      :boundary-ref="editorRef"
+      @update:filter-peer-ids="(val) => (filterPeerIds = val)"
+      @update:filter-protocols="(val) => (filterProtocols = val)"
+      @close="filterPanelOpen = false"
+    />
 
     <div v-if="!activeTab" class="ecu-msg-empty">当前 ECU 未连接任何 CAN BUS。</div>
 
@@ -306,10 +304,12 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, toRef } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue';
 import { useEcuMessageWorkspace } from '@/features/can-arch/app/composables/useEcuMessageWorkspace.js';
 import { useEcuMessageSelection } from '@/features/can-arch/app/composables/useEcuMessageSelection.js';
 import { useEcuMessageCommands } from '@/features/can-arch/app/composables/useEcuMessageCommands.js';
+import EcuMessageFilterPanel from './EcuMessageFilterPanel.vue';
+import { filterPanelPositionCache, saveFilterPanelOpen } from '@/features/can-arch/app/composables/useFilterPanelCache.js';
 
 const props = defineProps({
   ecu: {
@@ -324,9 +324,18 @@ const props = defineProps({
     type: Number,
     default: 620,
   },
+  ecuNodes: {
+    type: Array,
+    default: () => [],
+  },
 });
 
-defineEmits(['close']);
+const emit = defineEmits(['close', 'switch-ecu']);
+
+function onEcuSwitch(ecuId) {
+  if (!ecuId || ecuId === props.ecu?.id) return;
+  emit('switch-ecu', ecuId);
+}
 
 const ecuRef = toRef(props, 'ecu');
 const busTabsRef = toRef(props, 'busTabs');
@@ -350,10 +359,6 @@ const {
   addSignalToMessage,
   syncMessageProtocolColor,
   protocolColor,
-  selectAllPeerFilters,
-  clearPeerFilters,
-  selectAllProtocolFilters,
-  clearProtocolFilters,
 } = useEcuMessageWorkspace({
   ecuRef,
   busTabsRef,
@@ -398,6 +403,12 @@ const splitRatio = ref(0.5);
 const collapsedLeft = ref(false);
 const collapsedRight = ref(false);
 const splitDrag = ref(null);
+const editorRef = ref(null);
+const filterPanelOpen = ref(filterPanelPositionCache.open);
+
+watch(filterPanelOpen, (val) => {
+  saveFilterPanelOpen(val);
+});
 
 const leftPaneWidth = computed(() => {
   if (collapsedRight.value) return '100%';
@@ -573,8 +584,8 @@ defineExpose({
 <style scoped>
 .ecu-msg-editor {
   position: relative;
-  display: grid;
-  grid-template-rows: auto auto 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
   padding: 10px;
   background: linear-gradient(180deg, #f8f2ea 0%, #f4ebe1 100%);
@@ -595,47 +606,70 @@ defineExpose({
   background: rgba(151, 112, 84, 0.14);
   color: #6c4d36;
   border-radius: 7px;
+  flex-shrink: 0;
 }
 
 .ecu-msg-back-icon:hover {
   background: rgba(151, 112, 84, 0.26);
 }
 
-.ecu-msg-title-wrap {
-  min-width: 0;
+.ecu-msg-ecu-switch {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
-.ecu-msg-title {
-  font-weight: 700;
-  color: #5c4535;
+.ecu-msg-ecu-select {
+  border: 1px solid #caa688;
+  background: #fffaf4;
+  color: #5c4433;
+  border-radius: 7px;
+  padding: 6px 10px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+  max-width: 180px;
 }
 
-.ecu-msg-subtitle {
-  font-size: 12px;
-  color: #8a7460;
+.ecu-msg-ecu-select:hover {
+  border-color: #b08863;
+  box-shadow: 0 1px 4px rgba(151, 112, 84, 0.2);
+}
+
+.ecu-msg-ecu-select:focus {
+  border-color: #b08863;
+  box-shadow: 0 0 0 2px rgba(176, 136, 99, 0.25);
 }
 
 .ecu-msg-tabs {
   display: flex;
   gap: 6px;
-  align-items: stretch;
-  border: 1px solid #dbc6b2;
-  border-radius: 10px;
-  padding: 6px;
-  background: rgba(255, 248, 239, 0.88);
+  align-items: center;
+  flex: 1;
+  min-width: 0;
 }
 
 .ecu-msg-tab {
-  border: 1px solid #d8bfa8;
-  background: #f9efe3;
-  color: #5c4433;
-  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #7a614d;
+  border-radius: 7px;
   padding: 6px 10px;
   min-width: 120px;
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 8px;
   align-items: center;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.ecu-msg-tab:hover {
+  background: rgba(151, 112, 84, 0.18);
+  color: #5c4433;
+  border-color: rgba(151, 112, 84, 0.3);
 }
 
 .ecu-msg-tab-index {
@@ -646,6 +680,7 @@ defineExpose({
   place-items: center;
   border: 1px solid #caa688;
   font-size: 11px;
+  background: rgba(255, 255, 255, 0.6);
 }
 
 .ecu-msg-tab-name {
@@ -654,49 +689,35 @@ defineExpose({
 }
 
 .ecu-msg-tab.active {
-  background: #eed9c5;
-  border-color: #ba8f6e;
-  box-shadow: inset 0 -2px 0 #9e7458;
+  background: #fff;
+  color: #5c4433;
+  border-color: #b08863;
+  box-shadow: 0 2px 6px rgba(151, 112, 84, 0.25);
 }
 
-.ecu-msg-filters {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 280px;
-  z-index: 4;
-  background: rgba(255, 252, 248, 0.95);
-  border: 1px solid #dcc9b6;
-  border-radius: 8px;
-  padding: 8px;
+.ecu-msg-tab.active .ecu-msg-tab-index {
+  background: #b08863;
+  color: #fff;
+  border-color: #967150;
+}
+
+.ecu-msg-filter-toggle {
+  width: 30px;
+  height: 30px;
+  border: 1px solid transparent;
+  background: rgba(151, 112, 84, 0.14);
+  color: #6c4d36;
+  border-radius: 7px;
   display: grid;
-  gap: 8px;
+  place-items: center;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.12s, border-color 0.12s;
 }
 
-.ecu-filter-group {
-  display: grid;
-  gap: 4px;
-}
-
-.ecu-filter-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 12px;
-  color: #644b38;
-}
-
-.ecu-filter-actions {
-  display: inline-flex;
-  gap: 6px;
-}
-
-.ecu-filter-actions button {
-  border: 0;
-  background: transparent;
-  color: #84614a;
-  font-size: 11px;
-  padding: 0;
+.ecu-msg-filter-toggle:hover {
+  background: rgba(151, 112, 84, 0.26);
+  border-color: rgba(151, 112, 84, 0.3);
 }
 
 .ecu-msg-empty {
@@ -710,6 +731,7 @@ defineExpose({
 .ecu-msg-body {
   position: relative;
   display: flex;
+  flex: 1 1 auto;
   min-height: 0;
   border: 1px solid #decbbc;
   border-radius: 8px;
@@ -729,8 +751,10 @@ defineExpose({
 
 .ecu-msg-pane {
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   background: rgba(255, 255, 255, 0.66);
 }
 
@@ -774,6 +798,8 @@ defineExpose({
 }
 
 .ecu-msg-grid {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
   padding: 6px;
   display: grid;
@@ -826,6 +852,7 @@ defineExpose({
 }
 
 .ecu-msg-splitter {
+  flex: 0 0 8px;
   width: 8px;
   cursor: col-resize;
   background: linear-gradient(180deg, #ead8c7 0%, #dfc7b1 100%);
@@ -893,13 +920,8 @@ defineExpose({
 }
 
 @media (max-width: 1240px) {
-  .ecu-msg-filters {
-    position: static;
-    width: 100%;
-  }
-
   .ecu-msg-editor {
-    grid-template-rows: auto auto auto 1fr;
+    gap: 6px;
   }
 
   .ecu-msg-grid-head,
