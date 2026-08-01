@@ -3,20 +3,30 @@
     <div class="can-arch-panel container-xl">
       <div class="can-arch-header">
         <div>
-          <h2 class="can-arch-title">CAN 架构设计器</h2>
-          <p class="can-arch-note mb-0">当前版本聚焦 ECU 建模：拖拽布局、协议配置、DBC 节点导入导出。</p>
+          <h2 class="can-arch-title">
+            {{ ecuMessageEditor.active ? `${ecuMessageEditor.ecu?.name || 'ECU'} 报文编辑器` : 'CAN 架构设计器' }}
+          </h2>
+          <p class="can-arch-note mb-0">
+            {{ ecuMessageEditor.active
+              ? '在此页配置该 ECU 各 CAN BUS 上的收发报文（Message / Signal）。'
+              : '当前版本聚焦 ECU 建模：拖拽布局、协议配置、DBC 节点导入导出。' }}
+          </p>
         </div>
         <div class="can-arch-toolbar-wrap">
           <div class="can-arch-menubar" @click.stop>
-            <button class="can-menu-text-btn" type="button" @click="toggleTopMenu('file')">文件</button>
-            <span class="can-menu-sep"></span>
+            <template v-if="!ecuMessageEditor.active">
+              <button class="can-menu-text-btn" type="button" @click="toggleTopMenu('file')">文件</button>
+              <span class="can-menu-sep"></span>
+            </template>
             <button class="can-menu-text-btn" type="button" @click="toggleTopMenu('edit')">编辑</button>
             <span class="can-menu-sep"></span>
             <button class="can-menu-text-btn" type="button" @click="toggleTopMenu('view')">视图</button>
-            <span class="can-menu-sep"></span>
-            <button class="can-menu-text-btn" type="button" @click="toggleTopMenu('export')">导出</button>
+            <template v-if="!ecuMessageEditor.active">
+              <span class="can-menu-sep"></span>
+              <button class="can-menu-text-btn" type="button" @click="toggleTopMenu('export')">导出</button>
+            </template>
 
-            <div v-if="activeTopMenu === 'file'" class="can-top-menu-panel">
+            <div v-if="activeTopMenu === 'file' && !ecuMessageEditor.active" class="can-top-menu-panel">
               <button class="can-top-menu-item" type="button" @click="runMenuAction(triggerImportDialog)">导入 DBC</button>
               <button class="can-top-menu-item" type="button" @click="runMenuAction(triggerConfigImportDialog)">导入架构 JSON</button>
             </div>
@@ -28,12 +38,14 @@
             </div>
 
             <div v-if="activeTopMenu === 'view'" class="can-top-menu-panel">
-              <button class="can-top-menu-item" type="button" @click="runMenuAction(toggleFullscreen)">{{ isFullscreen ? '退出全屏' : '全屏查看' }}</button>
-              <button v-if="isSideCollapsed" class="can-top-menu-item" type="button" @click="runMenuAction(showSideCard)">显示属性面板</button>
-              <button v-else class="can-top-menu-item" type="button" @click="runMenuAction(hideSideCard)">隐藏属性面板</button>
+              <button class="can-top-menu-item" type="button" @click="runMenuAction(toggleFullscreen)">{{ isFullscreen ? '退出全屏 (Esc)' : '全屏查看 (Ctrl+Shift+F)' }}</button>
+              <template v-if="!ecuMessageEditor.active">
+                <button v-if="isSideCollapsed" class="can-top-menu-item" type="button" @click="runMenuAction(showSideCard)">显示属性面板</button>
+                <button v-else class="can-top-menu-item" type="button" @click="runMenuAction(hideSideCard)">隐藏属性面板</button>
+              </template>
             </div>
 
-            <div v-if="activeTopMenu === 'export'" class="can-top-menu-panel">
+            <div v-if="activeTopMenu === 'export' && !ecuMessageEditor.active" class="can-top-menu-panel">
               <button class="can-top-menu-item" type="button" @click="runMenuAction(exportArchitectureConfig)">导出架构 JSON</button>
               <button class="can-top-menu-item" type="button" @click="runMenuAction(exportSelectedNodes)" :disabled="!hasAnySelectionForExport">导出选中 DBC</button>
               <button class="can-top-menu-item" type="button" @click="runMenuAction(exportArchitectureSvg)">导出 SVG</button>
@@ -50,25 +62,27 @@
           </div>
 
           <div class="can-arch-toolbar can-arch-toolbar-icons">
-            <select v-model="activeLinkStyle" class="form-select form-select-sm can-link-style-select" title="连线样式" @change="applyActiveStyleToSelectedLink">
-              <option value="polyline">折线（可加锚点）</option>
-              <option value="curve">曲线</option>
-              <option value="rounded">圆角折线</option>
-              <option value="orthogonal">直角折线</option>
-            </select>
-            <button class="can-icon-tool-btn" type="button" title="新增 ECU" data-tip="新增 ECU" @click="addNode()">
-              <span aria-hidden="true">＋</span>
-            </button>
-            <button class="can-icon-tool-btn" type="button" title="新增 CAN BUS" data-tip="新增 CAN BUS" @click="addBus()">
-              <span aria-hidden="true">◉</span>
-            </button>
+            <template v-if="!ecuMessageEditor.active">
+              <select v-model="activeLinkStyle" class="form-select form-select-sm can-link-style-select" title="连线样式" @change="applyActiveStyleToSelectedLink">
+                <option value="polyline">折线（可加锚点）</option>
+                <option value="curve">曲线</option>
+                <option value="rounded">圆角折线</option>
+                <option value="orthogonal">直角折线</option>
+              </select>
+              <button class="can-icon-tool-btn" type="button" title="新增 ECU" data-tip="新增 ECU" @click="addNode()">
+                <span aria-hidden="true">＋</span>
+              </button>
+              <button class="can-icon-tool-btn" type="button" title="新增 CAN BUS" data-tip="新增 CAN BUS" @click="addBus()">
+                <span aria-hidden="true">◉</span>
+              </button>
+            </template>
             <button class="can-icon-tool-btn" type="button" title="撤销" data-tip="撤销" :disabled="!canUndo" @click="undoNodes">
               <span aria-hidden="true">↶</span>
             </button>
             <button class="can-icon-tool-btn" type="button" title="重做" data-tip="重做" :disabled="!canRedo" @click="redoNodes">
               <span aria-hidden="true">↷</span>
             </button>
-            <button class="can-icon-tool-btn" type="button" :title="isFullscreen ? '退出全屏' : '全屏查看'" :data-tip="isFullscreen ? '退出全屏' : '全屏查看'" @click="toggleFullscreen">
+            <button class="can-icon-tool-btn" type="button" :title="isFullscreen ? '退出全屏 (Esc)' : '全屏查看 (Ctrl+Shift+F)'" :data-tip="isFullscreen ? '退出全屏 (Esc)' : '全屏查看 (Ctrl+Shift+F)'" @click="toggleFullscreen">
               <span aria-hidden="true">⛶</span>
             </button>
             <button class="can-icon-tool-btn danger" type="button" title="删除选中" data-tip="删除选中" :disabled="!hasAnySelectionForDelete" @click="deleteSelected">
@@ -95,7 +109,7 @@
 
       <div class="can-arch-layout">
         <div class="can-arch-canvas-card">
-          <div class="can-arch-canvas-head">
+          <div v-if="!ecuMessageEditor.active" class="can-arch-canvas-head">
             <strong>CAN 拓扑画布</strong>
             <div class="can-arch-head-actions">
               <span class="can-arch-meta">ECU {{ nodes.length }} 个 / BUS {{ buses.length }} 个 / 连线 {{ links.length }} 条</span>
@@ -112,6 +126,7 @@
           </div>
 
           <div
+            v-if="!ecuMessageEditor.active"
             ref="canvasRef"
             class="can-arch-canvas"
             :class="{ 'is-panning': isCanvasPanning }"
@@ -208,6 +223,7 @@
                   :class="nodeCardClasses(node)"
                   :style="nodeCardStyle(node)"
                   @pointerdown="onNodePointerDown(node, $event)"
+                  @dblclick.stop.prevent="openEcuMessageEditor(node)"
                   @pointermove="onNodePointerMove($event)"
                   @pointerleave="onNodePointerLeave(node, $event)"
                   @pointerup="onNodePointerUp(node, $event)"
@@ -276,14 +292,16 @@
                 </div>
               </div>
             </div>
-
-            <div
-              class="can-arch-height-resizer"
-              title="拖拽调整画布高度"
-              @pointerdown.stop.prevent="onCanvasResizePointerDown"
-            ></div>
           </div>
-          <aside v-if="!isSideCollapsed" class="can-arch-side-card can-arch-side-card-floating">
+          <EcuMessageEditor
+            v-else
+            ref="ecuMessageEditorRef"
+            :ecu="ecuMessageEditor.ecu"
+            :bus-tabs="ecuMessageEditorBusTabs"
+            :height="canvasHeight"
+            @close="closeEcuMessageEditor"
+          />
+          <aside v-if="!ecuMessageEditor.active && !isSideCollapsed" class="can-arch-side-card can-arch-side-card-floating">
             <div class="can-arch-canvas-head">
               <strong>{{ sidePanelTitle }}</strong>
               <button
@@ -501,6 +519,12 @@
           <div class="can-arch-status can-arch-status-floating" :class="{ error: Boolean(statusError) }">
             {{ floatingStatusText }}
           </div>
+
+          <div
+            class="can-arch-height-resizer"
+            title="拖拽调整画布高度"
+            @pointerdown.stop.prevent="onCanvasResizePointerDown"
+          ></div>
         </div>
       </div>
 
@@ -861,13 +885,15 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { J1939Feature } from '@/features/j1939';
 import { useJ1939ModuleInit } from '@/app/composables/useJ1939ModuleInit.js';
 import { useBusSelection } from '@/features/can-arch/app/composables/useBusSelection.js';
 import { useBoxSelection } from '@/features/can-arch/app/composables/useBoxSelection.js';
 import { useCanvasPan } from '@/features/can-arch/app/composables/useCanvasPan.js';
+import { useDbcExportSelection } from '@/features/can-arch/app/composables/useDbcExportSelection.js';
 import { useImportReview } from '@/features/can-arch/app/composables/useImportReview.js';
+import EcuMessageEditor from '@/features/can-arch/ui/components/EcuMessageEditor.vue';
 import {
   canProtocols,
   parseDbcNodes,
@@ -905,10 +931,68 @@ import {
   resolveNodeEdgeAnchorFromPointer as geometryResolveNodeEdgeAnchorFromPointer,
 } from '@/features/can-arch/domain/can-arch-geometry.js';
 import {
+  addAnchorToLink as domainAddAnchorToLink,
+  ensureControlAnchorsForLink as domainEnsureControlAnchorsForLink,
+  findBusByPoint as domainFindBusByPoint,
+  findNodeByPoint as domainFindNodeByPoint,
+  nodeLinkDots as domainNodeLinkDots,
+  resolveLinkEndpointsForGeometry as domainResolveLinkEndpointsForGeometry,
+} from '@/features/can-arch/domain/can-arch-link-geometry.js';
+import {
   normalizeIntegerList as domainNormalizeIntegerList,
   normalizeLinkStyle as domainNormalizeLinkStyle,
   normalizeProtocolsList as domainNormalizeProtocolsList,
 } from '@/features/can-arch/domain/can-arch-normalizers.js';
+import {
+  parseHexColor,
+  normalizeNodeBaseColor,
+  mixWithWhite,
+  mixWithBlack,
+  buildNodeCardStyle,
+  buildBusCardStyle,
+} from '@/features/can-arch/domain/can-arch-colors.js';
+import {
+  nodeProtocolGroups as domainNodeProtocolGroups,
+  resolveNodeDefaultProtocols as domainResolveNodeDefaultProtocols,
+  resolveNodeDefaultJ1939Addresses as domainResolveNodeDefaultJ1939Addresses,
+  resolveNodeDefaultCanopenNodeIds as domainResolveNodeDefaultCanopenNodeIds,
+  resolveLinkAllowedProtocols as domainResolveLinkAllowedProtocols,
+  resolveLinkAllowedJ1939Addresses as domainResolveLinkAllowedJ1939Addresses,
+  resolveLinkAllowedCanopenNodeIds as domainResolveLinkAllowedCanopenNodeIds,
+  normalizeLinkProtocolsByNode as domainNormalizeLinkProtocolsByNode,
+  normalizeLinkJ1939AddressesByNode as domainNormalizeLinkJ1939AddressesByNode,
+  normalizeLinkCanopenNodeIdsByNode as domainNormalizeLinkCanopenNodeIdsByNode,
+  pruneNodeConnectedLinkCapabilities as domainPruneNodeConnectedLinkCapabilities,
+} from '@/features/can-arch/domain/can-arch-protocols.js';
+import {
+  createNodeName,
+  createBusName,
+  ensureUniqueLabel,
+} from '@/features/can-arch/domain/can-arch-naming.js';
+import {
+  buildDbcBusGroups,
+  buildNodeProjections,
+  splitExportNodesByProtocol,
+  executeDbcExport as executeDbcExportCore,
+} from '@/features/can-arch/services/can-arch-dbc-export.js';
+import {
+  downloadTextFile,
+  downloadBlobFile,
+  buildArchitectureSvg,
+  exportArchitecturePng as serviceExportArchitecturePng,
+  buildTimestampTag,
+} from '@/features/can-arch/services/can-arch-export.js';
+import {
+  cloneNodesSnapshot,
+  cloneBusesSnapshot,
+  cloneLinksSnapshot,
+  buildTopologySnapshot as cloneTopologySnapshot,
+  hydrateNodes,
+  hydrateBuses,
+  hydrateLinks,
+  extractTopologyFromConfigPayload,
+} from '@/features/can-arch/domain/can-arch-topology.js';
+import { escapeXml } from '@/features/can-arch/domain/can-arch-xml.js';
 
 const props = defineProps({
   active: {
@@ -935,6 +1019,7 @@ const clipboardPayload = ref(null);
 const pasteSerial = ref(0);
 const selectedIdSet = computed(() => new Set(selectedIds.value));
 const canvasRef = ref(null);
+const ecuMessageEditorRef = ref(null);
 const importInputRef = ref(null);
 const configImportInputRef = ref(null);
 
@@ -949,20 +1034,6 @@ const importTarget = reactive({
 const importReviewState = reactive({
   newExpanded: true,
   conflictExpanded: true,
-});
-const dbcExportModalOpen = ref(false);
-const dbcExportSelection = reactive({
-  includeJ1939: true,
-  includeOthers: true,
-  j1939Mode: 'dedicated',
-  selectedBusIds: [],
-});
-const pendingDbcExport = reactive({
-  j1939Nodes: [],
-  otherNodes: [],
-  j1939Count: 0,
-  otherCount: 0,
-  busGroups: [],
 });
 const statusMessage = ref('准备就绪。');
 const statusError = ref('');
@@ -983,11 +1054,17 @@ const isFullscreen = ref(false);
 const isSideCollapsed = ref(false);
 const canvasZoom = ref(1);
 const canvasHeight = ref(620);
+const nonFullscreenCanvasHeight = ref(620);
 const activeTopMenu = ref('');
 const activeLinkStyle = ref('polyline');
 const exportPrefs = reactive({
   includeBackground: true,
   autoCrop: true,
+});
+const ecuMessageEditor = reactive({
+  active: false,
+  ecuId: '',
+  ecu: null,
 });
 
 const formErrors = ref([]);
@@ -1116,12 +1193,29 @@ const sidePanelTitle = computed(() => {
 });
 
 const hasAnySelectionForDelete = computed(() => {
+  if (ecuMessageEditor.active) {
+    return Boolean(ecuMessageEditorRef.value?.hasSelection);
+  }
   return Boolean(selectedLinkId.value) || selectedIds.value.length > 0 || selectedBusIds.value.length > 0;
 });
 
 const hasAnySelectionForExport = computed(() => {
   return Boolean(selectedLinkId.value) || selectedIds.value.length > 0 || selectedBusIds.value.length > 0;
 });
+
+const {
+  dbcExportModalOpen,
+  dbcExportSelection,
+  pendingDbcExport,
+  canConfirmDbcExport,
+  closeDbcExportModal,
+  syncPendingDbcExportCountsByBusSelection,
+  toggleDbcExportBusSelection,
+  toggleDbcExportGroupProtocol,
+  updateDbcExportGroupJ1939Mode,
+  openDbcExportForBusGroups,
+  openDbcExportForProtocolSplit,
+} = useDbcExportSelection();
 
 const {
   newImportCandidates,
@@ -1143,18 +1237,6 @@ const {
   importStage,
 });
 
-const canConfirmDbcExport = computed(() => {
-  if (pendingDbcExport.busGroups.length > 0) {
-    const selectedGroups = pendingDbcExport.busGroups.filter((group) => group.selected);
-    if (selectedGroups.length === 0) return false;
-    return selectedGroups.every((group) => group.includeJ1939 || group.includeOthers);
-  }
-
-  const canUseJ1939 = pendingDbcExport.j1939Count > 0 && dbcExportSelection.includeJ1939;
-  const canUseOthers = pendingDbcExport.otherCount > 0 && dbcExportSelection.includeOthers;
-  return canUseJ1939 || canUseOthers;
-});
-
 const floatingStatusText = computed(() => {
   if (statusError.value) return statusError.value;
   if (selectionRect.value) {
@@ -1164,6 +1246,42 @@ const floatingStatusText = computed(() => {
     return `框选中：已选 ${totalCount} 项（ECU ${ecuCount} 个，CAN BUS ${busCount} 个）。`;
   }
   return statusMessage.value;
+});
+
+const ecuMessageEditorBusTabs = computed(() => {
+  if (!ecuMessageEditor.active || !ecuMessageEditor.ecuId) return [];
+  const currentNode = nodes.value.find((item) => item.id === ecuMessageEditor.ecuId);
+  if (!currentNode) return [];
+  const tabs = [];
+  for (const bus of buses.value) {
+    const peerIds = new Set();
+    for (const link of links.value) {
+      const linkBusId = resolveLinkBusId(link);
+      if (linkBusId !== bus.id) continue;
+      const linkNodeId = resolveLinkNodeId(link);
+      if (!linkNodeId) continue;
+      if (linkNodeId === currentNode.id) continue;
+      const peer = nodes.value.find((item) => item.id === linkNodeId);
+      if (!peer) continue;
+      peerIds.add(peer.id);
+    }
+
+    const connectedToBus = links.value.some((link) => resolveLinkBusId(link) === bus.id && resolveLinkNodeId(link) === currentNode.id);
+    if (!connectedToBus) continue;
+
+    tabs.push({
+      busId: bus.id,
+      busName: bus.name,
+      peers: [...peerIds].map((id) => {
+        const peer = nodes.value.find((item) => item.id === id);
+        return {
+          id,
+          name: peer?.name || id,
+        };
+      }),
+    });
+  }
+  return tabs;
 });
 
 const canAddAnchorInContextMenu = computed(() => {
@@ -1215,106 +1333,58 @@ function normalizeIntegerList(value) {
   return domainNormalizeIntegerList(value);
 }
 
+function _findNodeById(id) {
+  return nodes.value.find((item) => item.id === id);
+}
+
 function resolveNodeDefaultProtocols(node) {
-  const normalized = normalizeProtocolsList(node?.protocols);
-  if (normalized.length > 0) return normalized;
-  return [canProtocols.GENERIC_STD];
+  return domainResolveNodeDefaultProtocols(node);
 }
 
 function resolveLinkDefaultProtocols(link) {
-  const fromType = link?.fromType || 'node';
-  const toType = link?.toType || 'bus';
-  const fromId = link?.fromId || link?.nodeId;
-  const toId = link?.toId || link?.busId;
-  const nodeId = fromType === 'node' ? fromId : (toType === 'node' ? toId : '');
-  const node = nodes.value.find((item) => item.id === nodeId);
-  return resolveNodeDefaultProtocols(node);
+  return domainResolveLinkAllowedProtocols(link, _findNodeById);
 }
 
 function resolveLinkAllowedProtocols(link) {
-  return resolveLinkDefaultProtocols(link);
+  return domainResolveLinkAllowedProtocols(link, _findNodeById);
 }
 
 function resolveNodeDefaultJ1939Addresses(node) {
-  return normalizeIntegerList(node?.j1939Addresses);
+  return domainResolveNodeDefaultJ1939Addresses(node);
 }
 
 function resolveNodeDefaultCanopenNodeIds(node) {
-  return normalizeIntegerList(node?.canopenNodeIds);
+  return domainResolveNodeDefaultCanopenNodeIds(node);
 }
 
 function resolveLinkAllowedJ1939Addresses(link) {
-  const fromType = link?.fromType || 'node';
-  const toType = link?.toType || 'bus';
-  const fromId = link?.fromId || link?.nodeId;
-  const toId = link?.toId || link?.busId;
-  const nodeId = fromType === 'node' ? fromId : (toType === 'node' ? toId : '');
-  const node = nodes.value.find((item) => item.id === nodeId);
-  return resolveNodeDefaultJ1939Addresses(node);
+  return domainResolveLinkAllowedJ1939Addresses(link, _findNodeById);
 }
 
 function resolveLinkAllowedCanopenNodeIds(link) {
-  const fromType = link?.fromType || 'node';
-  const toType = link?.toType || 'bus';
-  const fromId = link?.fromId || link?.nodeId;
-  const toId = link?.toId || link?.busId;
-  const nodeId = fromType === 'node' ? fromId : (toType === 'node' ? toId : '');
-  const node = nodes.value.find((item) => item.id === nodeId);
-  return resolveNodeDefaultCanopenNodeIds(node);
+  return domainResolveLinkAllowedCanopenNodeIds(link, _findNodeById);
 }
 
 function normalizeLinkProtocolsByNode(link, protocolsInput) {
-  const allowed = new Set(resolveLinkAllowedProtocols(link));
-  return normalizeProtocolsList(protocolsInput).filter((token) => allowed.has(token));
+  return domainNormalizeLinkProtocolsByNode(link, protocolsInput, _findNodeById);
 }
 
 function normalizeLinkJ1939AddressesByNode(link, protocolsInput, addressesInput) {
-  const protocols = normalizeLinkProtocolsByNode(link, protocolsInput);
-  if (!protocols.includes(canProtocols.J1939)) return [];
-  const allowed = new Set(resolveLinkAllowedJ1939Addresses(link));
-  return normalizeIntegerList(addressesInput).filter((num) => allowed.has(num));
+  return domainNormalizeLinkJ1939AddressesByNode(link, protocolsInput, addressesInput, _findNodeById);
 }
 
 function normalizeLinkCanopenNodeIdsByNode(link, protocolsInput, addressesInput) {
-  const protocols = normalizeLinkProtocolsByNode(link, protocolsInput);
-  if (!protocols.includes(canProtocols.CANOPEN)) return [];
-  const allowed = new Set(resolveLinkAllowedCanopenNodeIds(link));
-  return normalizeIntegerList(addressesInput).filter((num) => allowed.has(num));
+  return domainNormalizeLinkCanopenNodeIdsByNode(link, protocolsInput, addressesInput, _findNodeById);
 }
 
 function pruneNodeConnectedLinkCapabilities(nodeId, allowedProtocols, allowedJ1939Addresses, allowedCanopenNodeIds) {
-  const allowedSet = new Set(normalizeProtocolsList(allowedProtocols));
-  const allowedJ1939Set = new Set(normalizeIntegerList(allowedJ1939Addresses));
-  const allowedCanopenSet = new Set(normalizeIntegerList(allowedCanopenNodeIds));
-  let changed = false;
-  for (const link of links.value) {
-    const fromType = link.fromType || 'node';
-    const toType = link.toType || 'bus';
-    const fromId = link.fromId || link.nodeId;
-    const toId = link.toId || link.busId;
-    const isConnectedNode = (fromType === 'node' && fromId === nodeId) || (toType === 'node' && toId === nodeId);
-    if (!isConnectedNode) continue;
-
-    const normalized = normalizeProtocolsList(link.protocols);
-    const pruned = normalized.filter((token) => allowedSet.has(token));
-    const normalizedJ1939 = normalizeIntegerList(link.j1939Addresses);
-    const prunedJ1939 = pruned.includes(canProtocols.J1939)
-      ? normalizedJ1939.filter((num) => allowedJ1939Set.has(num))
-      : [];
-    const normalizedCanopen = normalizeIntegerList(link.canopenNodeIds);
-    const prunedCanopen = pruned.includes(canProtocols.CANOPEN)
-      ? normalizedCanopen.filter((num) => allowedCanopenSet.has(num))
-      : [];
-    const protocolChanged = JSON.stringify(normalized) !== JSON.stringify(pruned);
-    const j1939Changed = JSON.stringify(normalizedJ1939) !== JSON.stringify(prunedJ1939);
-    const canopenChanged = JSON.stringify(normalizedCanopen) !== JSON.stringify(prunedCanopen);
-    if (!protocolChanged && !j1939Changed && !canopenChanged) continue;
-    link.protocols = pruned;
-    link.j1939Addresses = prunedJ1939;
-    link.canopenNodeIds = prunedCanopen;
-    changed = true;
-  }
-  return changed;
+  return domainPruneNodeConnectedLinkCapabilities(
+    nodeId,
+    allowedProtocols,
+    allowedJ1939Addresses,
+    allowedCanopenNodeIds,
+    links.value,
+  );
 }
 
 function canLinkUseProtocol(protocol) {
@@ -1359,93 +1429,11 @@ function resolveModuleAnchorPoint(type, module, anchorEdge, anchorOffset, target
 }
 
 function resolveLinkEndpointsForGeometry(link) {
-  const fromType = link?.fromType || 'node';
-  const toType = link?.toType || 'bus';
-  const fromId = link?.fromId || link?.nodeId;
-  const toId = link?.toId || link?.busId;
-  const fromModule = resolveModuleByRef(fromType, fromId);
-  const toModule = resolveModuleByRef(toType, toId);
-  if (!fromModule || !toModule) return null;
-
-  const fromCenter = fromType === 'node'
-    ? { x: fromModule.position.x + NODE_WIDTH / 2, y: fromModule.position.y + NODE_HEIGHT / 2 }
-    : { x: fromModule.position.x + BUS_RADIUS, y: fromModule.position.y + BUS_RADIUS };
-  const toCenter = toType === 'node'
-    ? { x: toModule.position.x + NODE_WIDTH / 2, y: toModule.position.y + NODE_HEIGHT / 2 }
-    : { x: toModule.position.x + BUS_RADIUS, y: toModule.position.y + BUS_RADIUS };
-
-  const start = resolveModuleAnchorPoint(fromType, fromModule, link.fromAnchorEdge, link.fromAnchorOffset, toCenter);
-  const end = resolveModuleAnchorPoint(toType, toModule, link.toAnchorEdge, link.toAnchorOffset, fromCenter);
-  if (!start || !end) return null;
-  return { start, end };
+  return domainResolveLinkEndpointsForGeometry(link, resolveModuleByRef);
 }
 
 function ensureControlAnchorsForLink(link) {
-  if (!link) return;
-  const style = normalizeLinkStyle(link.style);
-  if (!['curve', 'rounded', 'orthogonal'].includes(style)) return;
-  const minAnchorCount = style === 'curve' ? 2 : 2;
-  const existingAnchors = Array.isArray(link.anchors)
-    ? link.anchors
-      .map((item) => ({ x: Number(item?.x), y: Number(item?.y) }))
-      .filter((item) => Number.isFinite(item.x) && Number.isFinite(item.y))
-    : [];
-  if (existingAnchors.length >= minAnchorCount) {
-    link.anchors = existingAnchors;
-    return;
-  }
-
-  const endpoints = resolveLinkEndpointsForGeometry(link);
-  if (!endpoints) return;
-  const sx = endpoints.start.x;
-  const sy = endpoints.start.y;
-  const ex = endpoints.end.x;
-  const ey = endpoints.end.y;
-  const dx = ex - sx;
-  const dy = ey - sy;
-  const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-  const unitPerp = {
-    x: -dy / distance,
-    y: dx / distance,
-  };
-  const curveLift = Math.max(16, Math.min(44, distance * 0.15));
-
-  const defaults = [];
-  if (style === 'curve') {
-    defaults.push(
-      {
-        x: Math.round(sx + dx * 0.33 + unitPerp.x * curveLift),
-        y: Math.round(sy + dy * 0.33 + unitPerp.y * curveLift),
-      },
-      {
-        x: Math.round(sx + dx * 0.67 - unitPerp.x * curveLift),
-        y: Math.round(sy + dy * 0.67 - unitPerp.y * curveLift),
-      },
-    );
-  } else {
-    defaults.push(
-      {
-        x: Math.round(sx + dx * 0.33),
-        y: Math.round(sy + dy * 0.33),
-      },
-      {
-        x: Math.round(sx + dx * 0.67),
-        y: Math.round(sy + dy * 0.67),
-      },
-    );
-  }
-
-  const nextAnchors = [...existingAnchors];
-  let fallbackIndex = 0;
-  while (nextAnchors.length < minAnchorCount) {
-    const fallback = defaults[Math.min(fallbackIndex, defaults.length - 1)] || {
-      x: Math.round((sx + ex) / 2),
-      y: Math.round((sy + ey) / 2),
-    };
-    nextAnchors.push({ ...fallback });
-    fallbackIndex += 1;
-  }
-  link.anchors = nextAnchors;
+  domainEnsureControlAnchorsForLink(link, resolveModuleByRef, normalizeLinkStyle);
 }
 
 function buildOrthogonalPoints(start, end) {
@@ -1512,28 +1500,7 @@ const resolvedLinks = computed(() => {
 });
 
 function nodeLinkDots(node) {
-  const dots = [];
-  for (const link of resolvedLinks.value) {
-    if (link.fromType === 'node' && link.fromId === node.id) {
-      const localX = link.start.x - node.position.x;
-      const localY = link.start.y - node.position.y;
-      dots.push({
-        key: `dot-${link.id}-s`,
-        left: Math.max(0, Math.min(NODE_WIDTH - 8, localX - 4)),
-        top: Math.max(0, Math.min(NODE_HEIGHT - 8, localY - 4)),
-      });
-    }
-    if (link.toType === 'node' && link.toId === node.id) {
-      const localX = link.end.x - node.position.x;
-      const localY = link.end.y - node.position.y;
-      dots.push({
-        key: `dot-${link.id}-e`,
-        left: Math.max(0, Math.min(NODE_WIDTH - 8, localX - 4)),
-        top: Math.max(0, Math.min(NODE_HEIGHT - 8, localY - 4)),
-      });
-    }
-  }
-  return dots;
+  return domainNodeLinkDots(node, resolvedLinks.value);
 }
 
 const linkDraft = computed(() => {
@@ -1635,113 +1602,22 @@ function protocolRowClass(protocol) {
   return 'generic';
 }
 
-function parseHexColor(value) {
-  const normalized = String(value || '').trim();
-  const match = normalized.match(/^#([0-9a-fA-F]{6})$/);
-  if (!match) return null;
-  const hex = match[1];
-  return {
-    r: Number.parseInt(hex.slice(0, 2), 16),
-    g: Number.parseInt(hex.slice(2, 4), 16),
-    b: Number.parseInt(hex.slice(4, 6), 16),
-  };
-}
-
-function normalizeNodeBaseColor(value, fallback = DEFAULT_NODE_BASE_COLOR) {
-  const parsed = parseHexColor(value);
-  if (!parsed) return fallback;
-  const toHex = (num) => Math.max(0, Math.min(255, num)).toString(16).padStart(2, '0');
-  return `#${toHex(parsed.r)}${toHex(parsed.g)}${toHex(parsed.b)}`;
-}
-
-function mixWithWhite(hex, ratio) {
-  const parsed = parseHexColor(hex) || parseHexColor(DEFAULT_NODE_BASE_COLOR);
-  const weight = Math.max(0, Math.min(1, ratio));
-  const mix = (channel) => Math.round(channel + (255 - channel) * weight);
-  const toHex = (num) => Math.max(0, Math.min(255, num)).toString(16).padStart(2, '0');
-  return `#${toHex(mix(parsed.r))}${toHex(mix(parsed.g))}${toHex(mix(parsed.b))}`;
-}
-
-function mixWithBlack(hex, ratio) {
-  const parsed = parseHexColor(hex) || parseHexColor(DEFAULT_NODE_BASE_COLOR);
-  const weight = Math.max(0, Math.min(1, ratio));
-  const mix = (channel) => Math.round(channel * (1 - weight));
-  const toHex = (num) => Math.max(0, Math.min(255, num)).toString(16).padStart(2, '0');
-  return `#${toHex(mix(parsed.r))}${toHex(mix(parsed.g))}${toHex(mix(parsed.b))}`;
-}
-
 function nodeCardStyle(node) {
-  const base = normalizeNodeBaseColor(node.baseColor);
-  return {
-    transform: `translate(${node.position.x}px, ${node.position.y}px)`,
-    '--node-border': mixWithBlack(base, 0.1),
-    '--node-bg-top': mixWithWhite(base, 0.9),
-    '--node-bg-bottom': mixWithWhite(base, 0.8),
-  };
+  return buildNodeCardStyle(node);
 }
 
 function nodeProtocolGroups(node) {
-  const groups = [];
-  const hasGenericStd = node.protocols.includes(canProtocols.GENERIC_STD);
-  const hasGenericExt = node.protocols.includes(canProtocols.GENERIC_EXT);
-  const hasJ1939 = node.protocols.includes(canProtocols.J1939) || node.j1939Addresses.length > 0;
-  const hasCanopen = node.protocols.includes(canProtocols.CANOPEN) || node.canopenNodeIds.length > 0;
-
-  if (hasGenericStd) {
-    groups.push({
-      key: 'generic-std',
-      label: 'Generic(Std)',
-      addressText: '',
-      showAddress: false,
-      badgeClass: 'can-pill-neutral',
-      rowClass: 'generic',
-    });
-  }
-
-  if (hasGenericExt) {
-    groups.push({
-      key: 'generic-ext',
-      label: 'Generic(Ext)',
-      addressText: '',
-      showAddress: false,
-      badgeClass: 'can-pill-neutral',
-      rowClass: 'generic',
-    });
-  }
-
-  if (hasJ1939) {
-    groups.push({
-      key: 'j1939',
-      label: 'J1939',
-      addressText: node.j1939Addresses.length > 0 ? node.j1939Addresses.join(', ') : '',
-      showAddress: true,
-      badgeClass: 'can-pill-j1939',
-      rowClass: 'j1939',
-    });
-  }
-
-  if (hasCanopen) {
-    groups.push({
-      key: 'canopen',
-      label: 'CANopen',
-      addressText: node.canopenNodeIds.length > 0 ? node.canopenNodeIds.join(', ') : '',
-      showAddress: true,
-      badgeClass: 'can-pill-canopen',
-      rowClass: 'canopen',
-    });
-  }
-
+  const groups = domainNodeProtocolGroups(node);
   if (groups.length === 0) {
-    groups.push({
+    return [{
       key: 'generic',
       label: 'Generic(Std)',
       addressText: '',
       showAddress: false,
       badgeClass: 'can-pill-neutral',
       rowClass: 'generic',
-    });
+    }];
   }
-
   return groups;
 }
 
@@ -1773,76 +1649,12 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function createNodeName(existingNames) {
-  let idx = 1;
-  while (existingNames.has(`ECU_${idx}`)) {
-    idx += 1;
-  }
-  return `ECU_${idx}`;
-}
-
-function createBusName(existingNames) {
-  let idx = 1;
-  while (existingNames.has(`CAN ${idx}`)) {
-    idx += 1;
-  }
-  return `CAN ${idx}`;
-}
-
-function ensureUniqueLabel(baseName, usedNames) {
-  const normalized = String(baseName || '').trim() || 'Item';
-  if (!usedNames.has(normalized)) {
-    usedNames.add(normalized);
-    return normalized;
-  }
-  let idx = 2;
-  while (usedNames.has(`${normalized}_${idx}`)) {
-    idx += 1;
-  }
-  const name = `${normalized}_${idx}`;
-  usedNames.add(name);
-  return name;
-}
-
 function findBusByPoint(point, excludeBusId = '') {
-  if (!point) return null;
-  let best = null;
-  let bestDist = Infinity;
-  for (const bus of buses.value) {
-    if (excludeBusId && bus.id === excludeBusId) continue;
-    const cx = bus.position.x + BUS_RADIUS;
-    const cy = bus.position.y + BUS_RADIUS;
-    const dx = point.x - cx;
-    const dy = point.y - cy;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist <= BUS_RADIUS + 30 && dist < bestDist) {
-      best = bus;
-      bestDist = dist;
-    }
-  }
-  return best;
+  return domainFindBusByPoint(point, buses.value, excludeBusId);
 }
 
 function findNodeByPoint(point, excludeNodeId = '') {
-  if (!point) return null;
-  let best = null;
-  let bestDist = Infinity;
-  for (const node of nodes.value) {
-    if (excludeNodeId && node.id === excludeNodeId) continue;
-    const inside = point.x >= node.position.x - 10 && point.x <= node.position.x + NODE_WIDTH + 10 &&
-      point.y >= node.position.y - 10 && point.y <= node.position.y + NODE_HEIGHT + 10;
-    if (!inside) continue;
-    const cx = node.position.x + NODE_WIDTH / 2;
-    const cy = node.position.y + NODE_HEIGHT / 2;
-    const dx = point.x - cx;
-    const dy = point.y - cy;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < bestDist) {
-      best = node;
-      bestDist = dist;
-    }
-  }
-  return best;
+  return domainFindNodeByPoint(point, nodes.value, excludeNodeId);
 }
 
 function resolveDropTargetFromEvent(event, fromRef) {
@@ -1977,36 +1789,7 @@ function addAnchorToLink(linkId, point) {
   const target = links.value.find((item) => item.id === linkId);
   const geometry = resolvedLinks.value.find((item) => item.id === linkId);
   if (!target || !geometry || !point) return;
-  if (!Array.isArray(target.anchors)) target.anchors = [];
-
-  const points = [geometry.start, ...(target.anchors || []), geometry.end];
-  let insertIndex = target.anchors.length;
-  let bestDist = Infinity;
-  for (let i = 0; i < points.length - 1; i += 1) {
-    const hit = distancePointToSegment(point, points[i], points[i + 1]);
-    if (hit.dist < bestDist) {
-      bestDist = hit.dist;
-      insertIndex = i;
-    }
-  }
-
-  let nextAnchor = {
-    x: Math.round(point.x),
-    y: Math.round(point.y),
-  };
-  const overlapCount = target.anchors.filter((anchor) => {
-    const dx = Number(anchor?.x) - nextAnchor.x;
-    const dy = Number(anchor?.y) - nextAnchor.y;
-    return Math.sqrt(dx * dx + dy * dy) < 8;
-  }).length;
-  if (overlapCount > 0) {
-    nextAnchor = {
-      x: nextAnchor.x + overlapCount * 12,
-      y: nextAnchor.y + overlapCount * 8,
-    };
-  }
-
-  target.anchors.splice(insertIndex, 0, nextAnchor);
+  domainAddAnchorToLink(target, geometry, point, distancePointToSegment);
   persistNodes();
 }
 
@@ -2293,18 +2076,10 @@ function nextBusPosition() {
   return { x: baseX, y: baseY };
 }
 
+const busCardStyle = buildBusCardStyle;
+
 function normalizeBusColor(value, fallback = BUS_COLOR_POOL[0]) {
   return normalizeNodeBaseColor(value, fallback);
-}
-
-function busCardStyle(bus) {
-  const color = normalizeBusColor(bus.color);
-  return {
-    transform: `translate(${bus.position.x}px, ${bus.position.y}px)`,
-    '--bus-color': color,
-    '--bus-color-soft': mixWithWhite(color, 0.22),
-    '--bus-color-deep': mixWithBlack(color, 0.2),
-  };
 }
 
 function persistNodes() {
@@ -2330,20 +2105,6 @@ function buildArchitectureConfig() {
   };
 }
 
-function extractTopologyFromConfigPayload(payload) {
-  if (Array.isArray(payload)) {
-    return { nodes: payload, buses: [], links: [] };
-  }
-  if (payload && typeof payload === 'object' && Array.isArray(payload.nodes)) {
-    return {
-      nodes: payload.nodes,
-      buses: Array.isArray(payload.buses) ? payload.buses : [],
-      links: Array.isArray(payload.links) ? payload.links : [],
-    };
-  }
-  throw new Error('配置文件格式不正确，缺少 nodes 列表。');
-}
-
 function exportArchitectureConfig() {
   const config = buildArchitectureConfig();
   const text = JSON.stringify(config, null, 2);
@@ -2356,196 +2117,31 @@ function triggerConfigImportDialog() {
   configImportInputRef.value?.click();
 }
 
-function escapeXml(value) {
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
-
-function resolveExportBounds(crop, padding = 28) {
-  if (!crop || nodes.value.length === 0) {
-    return {
-      x: 0,
-      y: 0,
-      width: Math.max(420, sceneSize.value.width),
-      height: Math.max(420, sceneSize.value.height),
-    };
-  }
-
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-
-  for (const node of nodes.value) {
-    minX = Math.min(minX, node.position.x);
-    minY = Math.min(minY, node.position.y);
-    maxX = Math.max(maxX, node.position.x + NODE_WIDTH);
-    maxY = Math.max(maxY, node.position.y + NODE_HEIGHT);
-  }
-  for (const bus of buses.value) {
-    minX = Math.min(minX, bus.position.x);
-    minY = Math.min(minY, bus.position.y);
-    maxX = Math.max(maxX, bus.position.x + BUS_RADIUS * 2);
-    maxY = Math.max(maxY, bus.position.y + BUS_RADIUS * 2);
-  }
-
-  if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
-    return { x: 0, y: 0, width: 420, height: 420 };
-  }
-
-  const x = Math.floor(minX - padding);
-  const y = Math.floor(minY - padding);
-  const width = Math.max(1, Math.ceil(maxX - minX + padding * 2));
-  const height = Math.max(1, Math.ceil(maxY - minY + padding * 2));
-  return { x, y, width, height };
-}
-
-function buildArchitectureSvg(options = {}) {
-  const includeBackground = options.includeBackground !== false;
-  const crop = options.crop === true;
-  const bounds = resolveExportBounds(crop);
-  const width = bounds.width;
-  const height = bounds.height;
-
-  const nodeBlocks = nodes.value.map((node) => {
-    const base = normalizeNodeBaseColor(node.baseColor);
-    const borderColor = mixWithBlack(base, 0.1);
-    const fillTop = mixWithWhite(base, 0.9);
-    const fillBottom = mixWithWhite(base, 0.8);
-    const accentStart = mixWithBlack(base, 0.12);
-    const accentEnd = mixWithWhite(base, 0.2);
-    const protocolLines = nodeProtocolGroups(node)
-      .map((group) => `${group.label}: ${group.addressText || '未配置地址'}`)
-      .slice(0, 2);
-    const line2 = protocolLines[0] || '';
-    const line3 = protocolLines[1] || '';
-
-    const x = node.position.x - bounds.x;
-    const y = node.position.y - bounds.y;
-
-    return `
-      <g transform="translate(${x}, ${y})">
-        <defs>
-          <linearGradient id="node-fill-${escapeXml(node.id)}" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="${fillTop}"/>
-            <stop offset="100%" stop-color="${fillBottom}"/>
-          </linearGradient>
-          <linearGradient id="node-accent-${escapeXml(node.id)}" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="${accentStart}"/>
-            <stop offset="100%" stop-color="${accentEnd}"/>
-          </linearGradient>
-        </defs>
-        <rect x="0" y="0" width="${NODE_WIDTH}" height="${NODE_HEIGHT}" rx="12" fill="url(#node-fill-${escapeXml(node.id)})" stroke="${borderColor}"/>
-        <rect x="0" y="0" width="8" height="${NODE_HEIGHT}" rx="8" fill="url(#node-accent-${escapeXml(node.id)})"/>
-        <text x="14" y="24" font-size="13" font-weight="700" fill="#2f241c">${escapeXml(node.name)} ECU</text>
-        ${line2 ? `<text x="14" y="48" font-size="11" fill="#5a4a3d">${escapeXml(line2)}</text>` : ''}
-        ${line3 ? `<text x="14" y="66" font-size="11" fill="#6c6157">${escapeXml(line3)}</text>` : ''}
-      </g>
-    `;
-  }).join('');
-
-  const linkBlocks = resolvedLinks.value.map((link) => {
-    const shiftedPath = String(link.path || '')
-      .replace(/\bM\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/g, (_, x, y) => `M ${Number(x) - bounds.x} ${Number(y) - bounds.y}`)
-      .replace(/\bL\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/g, (_, x, y) => `L ${Number(x) - bounds.x} ${Number(y) - bounds.y}`)
-      .replace(/\bQ\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/g, (_, x1, y1, x2, y2) => `Q ${Number(x1) - bounds.x} ${Number(y1) - bounds.y} ${Number(x2) - bounds.x} ${Number(y2) - bounds.y}`);
-    return `<path d="${shiftedPath}" stroke="${escapeXml(link.color)}" stroke-width="3" stroke-linecap="round" fill="none"/>`;
-  }).join('');
-
-  const busBlocks = buses.value.map((bus) => {
-    const cx = bus.position.x + BUS_RADIUS - bounds.x;
-    const cy = bus.position.y + BUS_RADIUS - bounds.y;
-    const color = normalizeBusColor(bus.color);
-    return `
-      <g>
-        <circle cx="${cx}" cy="${cy}" r="${BUS_RADIUS}" fill="${color}" stroke="rgba(255,255,255,0.9)" stroke-width="2"/>
-        <text x="${cx}" y="${cy + 4}" font-size="11" font-weight="700" text-anchor="middle" fill="#ffffff">${escapeXml(bus.name.slice(0, 8))}</text>
-      </g>
-    `;
-  }).join('');
-
-  const backgroundLayer = includeBackground
-    ? `
-  <rect x="0" y="0" width="${width}" height="${height}" fill="url(#bg-grad)"/>
-  <rect x="0" y="0" width="${width}" height="${height}" fill="url(#grid)"/>`
-    : '';
-
-  const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-  <defs>
-    <linearGradient id="bg-grad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#fbf8f3"/>
-      <stop offset="100%" stop-color="#f4ede4"/>
-    </linearGradient>
-    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
-      <path d="M 24 0 L 0 0 0 24" fill="none" stroke="rgba(217,200,181,0.35)" stroke-width="1"/>
-    </pattern>
-  </defs>
-  ${backgroundLayer}
-  ${linkBlocks}
-  ${busBlocks}
-  ${nodeBlocks}
-</svg>`;
-
-  return { svg, width, height };
-}
-
 function exportArchitectureSvg() {
-  const { svg } = buildArchitectureSvg({
+  const result = buildArchitectureSvg({
+    nodes: nodes.value,
+    buses: buses.value,
+    resolvedLinks: resolvedLinks.value,
     includeBackground: exportPrefs.includeBackground,
     crop: exportPrefs.autoCrop,
+    sceneSize: sceneSize.value,
   });
-  const dateTag = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-  downloadTextFile(`can-arch-${dateTag}.svg`, svg);
+  downloadTextFile(`can-arch-${buildTimestampTag()}.svg`, result.svg);
   setStatus(`已导出 SVG（${exportPrefs.includeBackground ? '含背景' : '透明背景'}，${exportPrefs.autoCrop ? '自动裁剪' : '不裁剪'}）。`);
 }
 
 async function exportArchitecturePng() {
   try {
-    const { svg, width, height } = buildArchitectureSvg({
+    const svgResult = buildArchitectureSvg({
+      nodes: nodes.value,
+      buses: buses.value,
+      resolvedLinks: resolvedLinks.value,
       includeBackground: exportPrefs.includeBackground,
       crop: exportPrefs.autoCrop,
+      sceneSize: sceneSize.value,
     });
-    const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
-    const svgUrl = URL.createObjectURL(svgBlob);
-
-    const image = new Image();
-
-    await new Promise((resolve, reject) => {
-      image.onload = resolve;
-      image.onerror = reject;
-      image.src = svgUrl;
-    });
-
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext('2d');
-    if (!context) {
-      URL.revokeObjectURL(svgUrl);
-      throw new Error('浏览器不支持 PNG 导出。');
-    }
-
-    context.drawImage(image, 0, 0, width, height);
-    const pngBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
-    URL.revokeObjectURL(svgUrl);
-    if (!pngBlob) {
-      throw new Error('PNG 编码失败。');
-    }
-
-    const url = URL.createObjectURL(pngBlob);
-    const anchor = document.createElement('a');
-    const dateTag = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-    anchor.href = url;
-    anchor.download = `can-arch-${dateTag}.png`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
+    const pngBlob = await serviceExportArchitecturePng(svgResult, exportPrefs);
+    downloadBlobFile(`can-arch-${buildTimestampTag()}.png`, pngBlob);
     setStatus(`已导出 PNG（${exportPrefs.includeBackground ? '含背景' : '透明背景'}，${exportPrefs.autoCrop ? '自动裁剪' : '不裁剪'}）。`);
   } catch (error) {
     setStatus(`导出 PNG 失败: ${error?.message || error}`, true);
@@ -2604,69 +2200,17 @@ function stopDraftApplyTimer() {
   draftApplyTimerId = null;
 }
 
-function cloneNodesSnapshot(source) {
-  return source.map((item) => ({
-    ...item,
-    position: {
-      x: Number(item.position?.x) || 0,
-      y: Number(item.position?.y) || 0,
-    },
-    protocols: Array.isArray(item.protocols) ? [...item.protocols] : [],
-    j1939Addresses: Array.isArray(item.j1939Addresses) ? [...item.j1939Addresses] : [],
-    canopenNodeIds: Array.isArray(item.canopenNodeIds) ? [...item.canopenNodeIds] : [],
-    baseColor: normalizeNodeBaseColor(item.baseColor),
-  }));
-}
-
-function cloneBusesSnapshot(source) {
-  return (Array.isArray(source) ? source : []).map((item) => ({
-    id: String(item?.id || crypto.randomUUID()),
-    name: String(item?.name || 'CAN 1').trim() || 'CAN 1',
-    baudRate: Number.isFinite(Number(item?.baudRate)) ? Number(item.baudRate) : DEFAULT_BUS_BAUD,
-    color: normalizeBusColor(item?.color),
-    position: {
-      x: Number(item?.position?.x) || 0,
-      y: Number(item?.position?.y) || 0,
-    },
-  }));
-}
-
-function cloneLinksSnapshot(source) {
-  return (Array.isArray(source) ? source : []).map((item) => ({
-    id: String(item?.id || crypto.randomUUID()),
-    fromType: item?.fromType === 'bus' ? 'bus' : 'node',
-    fromId: String(item?.fromId || item?.nodeId || ''),
-    toType: item?.toType === 'node' ? 'node' : 'bus',
-    toId: String(item?.toId || item?.busId || ''),
-    fromAnchorEdge: ['left', 'right', 'top', 'bottom'].includes(item?.fromAnchorEdge)
-      ? item.fromAnchorEdge
-      : (['left', 'right', 'top', 'bottom'].includes(item?.anchorEdge) ? item.anchorEdge : 'auto'),
-    fromAnchorOffset: Number.isFinite(Number(item?.fromAnchorOffset)) ? Number(item.fromAnchorOffset) : (Number.isFinite(Number(item?.anchorOffset)) ? Number(item.anchorOffset) : 0.5),
-    toAnchorEdge: ['left', 'right', 'top', 'bottom'].includes(item?.toAnchorEdge) ? item.toAnchorEdge : 'auto',
-    toAnchorOffset: Number.isFinite(Number(item?.toAnchorOffset)) ? Number(item.toAnchorOffset) : 0.5,
-    style: normalizeLinkStyle(item?.style),
-    protocols: normalizeProtocolsList(item?.protocols),
-    j1939Addresses: normalizeIntegerList(item?.j1939Addresses),
-    canopenNodeIds: normalizeIntegerList(item?.canopenNodeIds),
-    anchors: Array.isArray(item?.anchors)
-      ? item.anchors
-        .map((anchor) => ({ x: Number(anchor?.x), y: Number(anchor?.y) }))
-        .filter((anchor) => Number.isFinite(anchor.x) && Number.isFinite(anchor.y))
-      : [],
-  }));
-}
-
-function cloneTopologySnapshot() {
-  return {
-    nodes: cloneNodesSnapshot(nodes.value),
-    buses: cloneBusesSnapshot(buses.value),
-    links: cloneLinksSnapshot(links.value),
-  };
+function takeTopologySnapshot() {
+  return cloneTopologySnapshot({
+    nodes: nodes.value,
+    buses: buses.value,
+    links: links.value,
+  });
 }
 
 function pushHistorySnapshot() {
   if (historySuspend.value) return;
-  historyPast.value.push(cloneTopologySnapshot());
+  historyPast.value.push(takeTopologySnapshot());
   if (historyPast.value.length > HISTORY_LIMIT) {
     historyPast.value.shift();
   }
@@ -2675,8 +2219,8 @@ function pushHistorySnapshot() {
 
 function applyHistoryState(snapshot, statusText) {
   historySuspend.value = true;
-  nodes.value = hydrateNodes(snapshot?.nodes || []);
-  buses.value = hydrateBuses(snapshot?.buses || []);
+  nodes.value = hydrateNodes(snapshot?.nodes || [], { nextNodePosition });
+  buses.value = hydrateBuses(snapshot?.buses || [], { nextBusPosition });
   links.value = hydrateLinks(snapshot?.links || [], nodes.value, buses.value);
   selectedIds.value = [];
   clearBusSelection({ sync: false });
@@ -2691,107 +2235,15 @@ function applyHistoryState(snapshot, statusText) {
 function undoNodes() {
   if (historyPast.value.length === 0) return;
   const previous = historyPast.value.pop();
-  historyFuture.value.push(cloneTopologySnapshot());
+  historyFuture.value.push(takeTopologySnapshot());
   applyHistoryState(previous, '已撤销上一步操作。');
 }
 
 function redoNodes() {
   if (historyFuture.value.length === 0) return;
   const next = historyFuture.value.pop();
-  historyPast.value.push(cloneTopologySnapshot());
+  historyPast.value.push(takeTopologySnapshot());
   applyHistoryState(next, '已重做上一步操作。');
-}
-
-function hydrateNodes(rawNodes) {
-  const list = Array.isArray(rawNodes) ? rawNodes : [];
-  return list
-    .map((item) => ({
-      id: String(item?.id || crypto.randomUUID()),
-      name: String(item?.name || '').trim() || 'ECU',
-      note: String(item?.note || ''),
-      position: {
-        x: Number.isFinite(Number(item?.position?.x)) ? Number(item.position.x) : 20,
-        y: Number.isFinite(Number(item?.position?.y)) ? Number(item.position.y) : 20,
-      },
-      protocols: Array.isArray(item?.protocols)
-        ? item.protocols.filter((token) => token === canProtocols.GENERIC_STD || token === canProtocols.GENERIC_EXT || token === canProtocols.J1939 || token === canProtocols.CANOPEN)
-        : [],
-      j1939Addresses: Array.isArray(item?.j1939Addresses)
-        ? item.j1939Addresses.map((num) => Number.parseInt(num, 10)).filter((num) => Number.isInteger(num))
-        : [],
-      canopenNodeIds: Array.isArray(item?.canopenNodeIds)
-        ? item.canopenNodeIds.map((num) => Number.parseInt(num, 10)).filter((num) => Number.isInteger(num))
-        : [],
-      baseColor: normalizeNodeBaseColor(item?.baseColor),
-      createdAt: String(item?.createdAt || nowIso()),
-      updatedAt: String(item?.updatedAt || nowIso()),
-      source: item?.source === 'dbc-import' ? 'dbc-import' : 'manual',
-    }))
-    .filter((item) => Boolean(item.id));
-}
-
-function hydrateBuses(rawBuses) {
-  const list = Array.isArray(rawBuses) ? rawBuses : [];
-  return list
-    .map((item, idx) => ({
-      id: String(item?.id || crypto.randomUUID()),
-      name: String(item?.name || `CAN ${idx + 1}`).trim() || `CAN ${idx + 1}`,
-      baudRate: Number.isFinite(Number(item?.baudRate)) ? Math.max(10, Math.round(Number(item.baudRate))) : DEFAULT_BUS_BAUD,
-      color: normalizeBusColor(item?.color, BUS_COLOR_POOL[idx % BUS_COLOR_POOL.length]),
-      position: {
-        x: Number.isFinite(Number(item?.position?.x)) ? Number(item.position.x) : nextBusPosition().x,
-        y: Number.isFinite(Number(item?.position?.y)) ? Number(item.position.y) : nextBusPosition().y,
-      },
-    }))
-    .filter((item) => Boolean(item.id));
-}
-
-function hydrateLinks(rawLinks, sourceNodes, sourceBuses) {
-  const nodeIdSet = new Set((sourceNodes || []).map((item) => item.id));
-  const busIdSet = new Set((sourceBuses || []).map((item) => item.id));
-  const seen = new Set();
-  return (Array.isArray(rawLinks) ? rawLinks : [])
-    .map((item) => {
-      const normalized = {
-        id: String(item?.id || crypto.randomUUID()),
-        fromType: item?.fromType === 'bus' ? 'bus' : 'node',
-        fromId: String(item?.fromId || item?.nodeId || ''),
-        toType: item?.toType === 'node' ? 'node' : 'bus',
-        toId: String(item?.toId || item?.busId || ''),
-        fromAnchorEdge: ['left', 'right', 'top', 'bottom'].includes(item?.fromAnchorEdge)
-          ? item.fromAnchorEdge
-          : (['left', 'right', 'top', 'bottom'].includes(item?.anchorEdge) ? item.anchorEdge : 'auto'),
-        fromAnchorOffset: Number.isFinite(Number(item?.fromAnchorOffset)) ? Number(item.fromAnchorOffset) : (Number.isFinite(Number(item?.anchorOffset)) ? Number(item.anchorOffset) : 0.5),
-        toAnchorEdge: ['left', 'right', 'top', 'bottom'].includes(item?.toAnchorEdge) ? item.toAnchorEdge : 'auto',
-        toAnchorOffset: Number.isFinite(Number(item?.toAnchorOffset)) ? Number(item.toAnchorOffset) : 0.5,
-        style: normalizeLinkStyle(item?.style),
-        protocols: normalizeProtocolsList(item?.protocols),
-        j1939Addresses: normalizeIntegerList(item?.j1939Addresses),
-        canopenNodeIds: normalizeIntegerList(item?.canopenNodeIds),
-        anchors: Array.isArray(item?.anchors)
-          ? item.anchors
-            .map((anchor) => ({ x: Number(anchor?.x), y: Number(anchor?.y) }))
-            .filter((anchor) => Number.isFinite(anchor.x) && Number.isFinite(anchor.y))
-          : [],
-      };
-      ensureControlAnchorsForLink(normalized);
-      return normalized;
-    })
-    .filter((item) => {
-      const isNodeBusPair = (item.fromType === 'node' && item.toType === 'bus') || (item.fromType === 'bus' && item.toType === 'node');
-      if (!isNodeBusPair) return false;
-      const fromExists = item.fromType === 'node' ? nodeIdSet.has(item.fromId) : busIdSet.has(item.fromId);
-      const toExists = item.toType === 'node' ? nodeIdSet.has(item.toId) : busIdSet.has(item.toId);
-      return fromExists && toExists;
-    })
-    .filter((item) => {
-      const keyA = `${item.fromType}:${item.fromId}`;
-      const keyB = `${item.toType}:${item.toId}`;
-      const key = keyA < keyB ? `${keyA}::${keyB}` : `${keyB}::${keyA}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
 }
 
 function loadNodes() {
@@ -2805,16 +2257,10 @@ function loadNodes() {
       return;
     }
     const payload = JSON.parse(raw);
-    if (Array.isArray(payload)) {
-      nodes.value = hydrateNodes(payload);
-      buses.value = [];
-      links.value = [];
-      selectedLinkId.value = '';
-      return;
-    }
-    nodes.value = hydrateNodes(payload?.nodes || []);
-    buses.value = hydrateBuses(payload?.buses || []);
-    links.value = hydrateLinks(payload?.links || [], nodes.value, buses.value);
+    const snapshot = extractTopologyFromConfigPayload(payload);
+    nodes.value = hydrateNodes(snapshot.nodes, { nextNodePosition });
+    buses.value = hydrateBuses(snapshot.buses, { nextBusPosition });
+    links.value = hydrateLinks(snapshot.links, nodes.value, buses.value);
     selectedLinkId.value = '';
   } catch (_) {
     nodes.value = [];
@@ -3083,8 +2529,50 @@ function addNodeAtContextMenu() {
 }
 
 function toggleFullscreen() {
+  if (!isFullscreen.value) {
+    nonFullscreenCanvasHeight.value = canvasHeight.value;
+    isFullscreen.value = true;
+    nextTick(() => {
+      syncFullscreenCanvasHeight();
+    });
+    closeContextMenu();
+    return;
+  }
+
   isFullscreen.value = !isFullscreen.value;
+  canvasHeight.value = nonFullscreenCanvasHeight.value;
   closeContextMenu();
+}
+
+function openEcuMessageEditor(node) {
+  if (!node?.id) return;
+  ecuMessageEditor.ecuId = node.id;
+  ecuMessageEditor.ecu = node;
+  ecuMessageEditor.active = true;
+  setStatus(`进入 ECU 报文编辑：${node.name}`);
+}
+
+function closeEcuMessageEditor() {
+  const name = ecuMessageEditor.ecu?.name || 'ECU';
+  ecuMessageEditor.active = false;
+  ecuMessageEditor.ecuId = '';
+  ecuMessageEditor.ecu = null;
+  setStatus(`已返回 CAN 画布（${name} 报文编辑已关闭）。`);
+}
+
+function syncFullscreenCanvasHeight() {
+  if (!isFullscreen.value) return;
+  const canvasElement = canvasRef.value;
+  if (!canvasElement) return;
+  const bounds = canvasElement.getBoundingClientRect();
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+  const available = Math.floor(viewportHeight - bounds.top - 10);
+  canvasHeight.value = Math.max(320, available);
+}
+
+function onWindowResize() {
+  if (!isFullscreen.value) return;
+  syncFullscreenCanvasHeight();
 }
 
 function deleteSelectedNodes(options = {}) {
@@ -3142,6 +2630,11 @@ function deleteSelectedBus(options = {}) {
 }
 
 function deleteSelected() {
+  if (ecuMessageEditor.active) {
+    ecuMessageEditorRef.value?.deleteSelection?.();
+    return;
+  }
+
   if (selectedLinkId.value) {
     deleteSelectedLink();
     return;
@@ -3475,14 +2968,13 @@ function onCanvasWheel(event) {
 }
 
 function onCanvasResizePointerDown(event) {
+  if (isFullscreen.value) return;
   if (event.button !== 0) return;
-  const canvasElement = canvasRef.value;
-  if (!canvasElement) return;
 
   canvasResizeState = {
     pointerId: event.pointerId,
     startY: event.clientY,
-    startHeight: canvasElement.clientHeight,
+    startHeight: Number(canvasHeight.value) || 620,
     pointerTarget: event.currentTarget,
   };
 
@@ -4192,59 +3684,6 @@ function buildDbcExportBusGroups() {
   return groups;
 }
 
-function syncPendingDbcExportCountsByBusSelection() {
-  if (pendingDbcExport.busGroups.length === 0) return;
-  const j1939NodeIds = new Set();
-  const otherNodeIds = new Set();
-  for (const group of pendingDbcExport.busGroups) {
-    if (!group.selected) continue;
-    if (group.includeJ1939) {
-      for (const node of group.j1939Nodes) {
-        j1939NodeIds.add(node.id);
-      }
-    }
-    if (group.includeOthers) {
-      for (const node of group.otherNodes) {
-        otherNodeIds.add(node.id);
-      }
-    }
-  }
-  pendingDbcExport.j1939Count = j1939NodeIds.size;
-  pendingDbcExport.otherCount = otherNodeIds.size;
-}
-
-function toggleDbcExportBusSelection(busId, checked) {
-  const group = pendingDbcExport.busGroups.find((item) => item.busId === busId);
-  if (!group) return;
-  group.selected = checked;
-  if (!checked) {
-    group.includeJ1939 = false;
-    group.includeOthers = false;
-  } else {
-    group.includeJ1939 = group.hasJ1939;
-    group.includeOthers = group.hasOthers;
-  }
-  syncPendingDbcExportCountsByBusSelection();
-}
-
-function toggleDbcExportGroupProtocol(busId, protocol, checked) {
-  const group = pendingDbcExport.busGroups.find((item) => item.busId === busId);
-  if (!group) return;
-  if (!group.requiresProtocolSelection) return;
-  if (protocol === 'j1939') {
-    group.includeJ1939 = checked && group.hasJ1939;
-  } else {
-    group.includeOthers = checked && group.hasOthers;
-  }
-  syncPendingDbcExportCountsByBusSelection();
-}
-
-function updateDbcExportGroupJ1939Mode(busId, mode) {
-  const group = pendingDbcExport.busGroups.find((item) => item.busId === busId);
-  if (!group) return;
-  group.j1939Mode = mode === 'downgrade' ? 'downgrade' : 'dedicated';
-}
-
 function sanitizeFilenamePart(value) {
   const normalized = String(value || '')
     .trim()
@@ -4255,59 +3694,7 @@ function sanitizeFilenamePart(value) {
   return normalized || 'bus';
 }
 
-function splitExportNodesByProtocol(nodesForExport) {
-  const j1939Nodes = [];
-  const otherNodes = [];
 
-  for (const node of nodesForExport) {
-    const protocols = normalizeProtocolsList(node.protocols);
-    const hasJ1939 = protocols.includes(canProtocols.J1939);
-    const otherProtocols = protocols.filter((token) => token !== canProtocols.J1939);
-
-    if (hasJ1939) {
-      j1939Nodes.push({
-        ...node,
-        protocols: [canProtocols.J1939],
-        j1939Addresses: normalizeIntegerList(node.j1939Addresses),
-        canopenNodeIds: [],
-      });
-    }
-
-    if (otherProtocols.length > 0 || !hasJ1939) {
-      const protocolsForOthers = otherProtocols.length > 0 ? otherProtocols : [canProtocols.GENERIC_STD];
-      otherNodes.push({
-        ...node,
-        protocols: protocolsForOthers,
-        j1939Addresses: [],
-        canopenNodeIds: protocolsForOthers.includes(canProtocols.CANOPEN)
-          ? normalizeIntegerList(node.canopenNodeIds)
-          : [],
-      });
-    }
-  }
-
-  return {
-    j1939Nodes,
-    otherNodes,
-  };
-}
-
-function resetPendingDbcExport() {
-  pendingDbcExport.j1939Nodes = [];
-  pendingDbcExport.otherNodes = [];
-  pendingDbcExport.j1939Count = 0;
-  pendingDbcExport.otherCount = 0;
-  pendingDbcExport.busGroups = [];
-}
-
-function closeDbcExportModal() {
-  dbcExportModalOpen.value = false;
-  dbcExportSelection.includeJ1939 = true;
-  dbcExportSelection.includeOthers = true;
-  dbcExportSelection.j1939Mode = 'dedicated';
-  dbcExportSelection.selectedBusIds = [];
-  resetPendingDbcExport();
-}
 
 function downgradeJ1939NodesToStandard(nodesInput) {
   const list = Array.isArray(nodesInput) ? nodesInput : [];
@@ -4485,18 +3872,6 @@ function confirmDbcExportSelection() {
   closeDbcExportModal();
 }
 
-function downloadTextFile(filename, content) {
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-}
-
 function exportSelectedNodesFromContextMenu() {
   closeContextMenu();
   exportSelectedNodes();
@@ -4505,30 +3880,14 @@ function exportSelectedNodesFromContextMenu() {
 function exportSelectedNodes() {
   const busGroups = buildDbcExportBusGroups();
   if (busGroups.length > 1) {
-    pendingDbcExport.busGroups = busGroups;
-    pendingDbcExport.j1939Nodes = [];
-    pendingDbcExport.otherNodes = [];
-    dbcExportSelection.selectedBusIds = busGroups.map((group) => group.busId);
-    dbcExportSelection.includeJ1939 = true;
-    dbcExportSelection.includeOthers = true;
-    dbcExportSelection.j1939Mode = 'dedicated';
-    syncPendingDbcExportCountsByBusSelection();
-    dbcExportModalOpen.value = true;
+    openDbcExportForBusGroups(busGroups);
     return;
   }
 
   if (busGroups.length === 1) {
     const [group] = busGroups;
     if (group.hasJ1939) {
-      pendingDbcExport.busGroups = busGroups;
-      pendingDbcExport.j1939Nodes = [];
-      pendingDbcExport.otherNodes = [];
-      dbcExportSelection.selectedBusIds = [group.busId];
-      dbcExportSelection.includeJ1939 = true;
-      dbcExportSelection.includeOthers = group.hasOthers;
-      dbcExportSelection.j1939Mode = group.j1939Mode;
-      syncPendingDbcExportCountsByBusSelection();
-      dbcExportModalOpen.value = true;
+      openDbcExportForBusGroups(busGroups);
       return;
     }
   }
@@ -4540,16 +3899,8 @@ function exportSelectedNodes() {
   }
 
   const { j1939Nodes, otherNodes } = splitExportNodesByProtocol(exportNodes);
-  pendingDbcExport.busGroups = [];
   if (j1939Nodes.length > 0 && otherNodes.length > 0) {
-    pendingDbcExport.j1939Nodes = j1939Nodes;
-    pendingDbcExport.otherNodes = otherNodes;
-    pendingDbcExport.j1939Count = j1939Nodes.length;
-    pendingDbcExport.otherCount = otherNodes.length;
-    dbcExportSelection.includeJ1939 = true;
-    dbcExportSelection.includeOthers = true;
-    dbcExportSelection.j1939Mode = 'dedicated';
-    dbcExportModalOpen.value = true;
+    openDbcExportForProtocolSplit(j1939Nodes, otherNodes);
     return;
   }
 
@@ -4847,9 +4198,18 @@ async function importDbcFile(file) {
 
 function handleDocumentKeydown(event) {
   if (!props.active) return;
+  if (ecuMessageEditor.active) return;
   const target = event.target;
   const tagName = String(target?.tagName || '').toLowerCase();
   const editable = tagName === 'input' || tagName === 'textarea' || target?.isContentEditable;
+
+  const isToggleFullscreen = (event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f';
+  if (isToggleFullscreen) {
+    event.preventDefault();
+    toggleFullscreen();
+    return;
+  }
+
   if (editable) return;
 
   const isUndo = (event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'z';
@@ -4891,6 +4251,11 @@ function handleDocumentKeydown(event) {
   }
 
   if (event.key === 'Escape') {
+    if (isFullscreen.value) {
+      event.preventDefault();
+      toggleFullscreen();
+      return;
+    }
     closeContextMenu();
   }
 }
@@ -4903,6 +4268,7 @@ onMounted(() => {
   window.addEventListener('keydown', handleDocumentKeydown);
   window.addEventListener('pointercancel', onDragPointerCancel);
   window.addEventListener('blur', onDragPointerCancel);
+  window.addEventListener('resize', onWindowResize);
   document.addEventListener('contextmenu', onDocumentContextMenuCapture, true);
   deleteKeyBound = true;
 });
@@ -4929,6 +4295,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointerdown', onDocumentPointerDown);
   window.removeEventListener('pointercancel', onDragPointerCancel);
   window.removeEventListener('blur', onDragPointerCancel);
+  window.removeEventListener('resize', onWindowResize);
   document.removeEventListener('contextmenu', onDocumentContextMenuCapture, true);
 });
 

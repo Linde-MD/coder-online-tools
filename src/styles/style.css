@@ -1192,6 +1192,11 @@ body.theme-warm-editorial {
 
 .can-arch-canvas-card {
     position: relative;
+    padding-bottom: 12px;
+}
+
+.can-arch-canvas-card>.ecu-msg-editor {
+    margin-top: 0;
 }
 
 .can-arch-side-card-floating {
@@ -1229,8 +1234,7 @@ body.theme-warm-editorial {
 }
 
 .is-fullscreen .can-arch-canvas {
-    height: calc(100vh - 430px);
-    min-height: 520px;
+    min-height: 320px;
 }
 
 .can-arch-helper-panel {
