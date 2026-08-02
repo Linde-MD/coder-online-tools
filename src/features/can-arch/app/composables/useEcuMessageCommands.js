@@ -1,7 +1,17 @@
 import { reactive, ref } from 'vue';
 
+const clipboard = ref(null);
+
+function deepClone(obj) {
+  try {
+    return structuredClone(obj);
+  } catch {
+    return JSON.parse(JSON.stringify(obj));
+  }
+}
+
 function cloneMessage(message) {
-  const cloned = structuredClone(message);
+  const cloned = deepClone(message);
   cloned.id = crypto.randomUUID();
   cloned.name = `${cloned.name}_copy`;
   cloned.signals = (cloned.signals || []).map((signal) => ({ ...signal, id: crypto.randomUUID() }));
@@ -19,8 +29,9 @@ export function useEcuMessageCommands({
   ensureSelected,
   addMessage,
   addSignalToMessage,
+  peerOptions,
+  currentEcuId,
 }) {
-  const clipboard = ref(null);
   const contextMenu = reactive({
     open: false,
     x: 0,
@@ -121,8 +132,8 @@ export function useEcuMessageCommands({
       pane,
       items: selectedRows.map((row) => ({
         type: row.type,
-        message: structuredClone(row.message),
-        signal: row.signal ? structuredClone(row.signal) : null,
+        message: deepClone(row.message),
+        signal: row.signal ? deepClone(row.signal) : null,
         messageId: row.message.id,
       })),
     };
@@ -139,8 +150,22 @@ export function useEcuMessageCommands({
     if (!clipboard.value || !activeTab.value) return;
     const targetList = pane === 'rx' ? rxMessages.value : txMessages.value;
     const messageItems = clipboard.value.items.filter((item) => item.type === 'message');
+
+    const validPeerIds = peerOptions ? new Set((peerOptions.value || []).map((p) => p.id)) : null;
+    const curId = currentEcuId ? (currentEcuId.value ?? currentEcuId) : null;
+
     for (const item of messageItems) {
-      targetList.push(cloneMessage(item.message));
+      const cloned = cloneMessage(item.message);
+      if (curId && validPeerIds) {
+        if (pane === 'rx') {
+          cloned.senders = (cloned.senders || []).filter((sid) => validPeerIds.has(sid));
+          cloned.receivers = [curId];
+        } else {
+          cloned.senders = [curId];
+          cloned.receivers = (cloned.receivers || []).filter((rid) => validPeerIds.has(rid));
+        }
+      }
+      targetList.push(cloned);
     }
 
     const signalItems = clipboard.value.items.filter((item) => item.type === 'signal');
@@ -150,7 +175,7 @@ export function useEcuMessageCommands({
       const targetMessage = selectedMessage?.message || targetList[0];
       if (targetMessage) {
         for (const item of signalItems) {
-          const cloned = structuredClone(item.signal);
+          const cloned = deepClone(item.signal);
           cloned.id = crypto.randomUUID();
           cloned.name = `${cloned.name}_copy`;
           targetMessage.signals.push(cloned);

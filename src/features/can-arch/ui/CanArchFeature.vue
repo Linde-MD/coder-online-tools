@@ -7,9 +7,10 @@
             {{ ecuMessageEditor.active ? `${ecuMessageEditor.ecu?.name || 'ECU'} 报文编辑器` : 'CAN 架构设计器' }}
           </h2>
           <p class="can-arch-note mb-0">
+            <span class="can-arch-wip-badge">⚠ 施工中</span>
             {{ ecuMessageEditor.active
-              ? '在此页配置该 ECU 各 CAN BUS 上的收发报文（Message / Signal）。'
-              : '当前版本聚焦 ECU 建模：拖拽布局、协议配置、DBC 节点导入导出。' }}
+              ? '功能不全且未经充分测试。在此配置该 ECU 各 CAN BUS 上的收发报文（Message / Signal），支持多选复制粘贴、跨 ECU 粘贴、同名/同 ID 冲突检测、排序索引、协议/对端筛选。'
+              : '功能不全且未经充分测试。ECU 拓扑建模：拖拽布局、CAN Bus 连线、协议配置（J1939 / CANopen / Generic）、DBC 导入导出、JSON 架构配置导入导出、SVG/PNG 画布导出。双击 ECU 进入报文编辑器。' }}
           </p>
         </div>
         <div class="can-arch-toolbar-wrap">
@@ -774,10 +775,10 @@
             当前选中关联多个 CAN BUS。请勾选要导出的 CAN BUS，系统会按每个 CAN BUS 分别生成 DBC。
           </template>
           <template v-else-if="pendingDbcExport.busGroups.length === 1">
-            当前选中关联 1 个 CAN BUS。请按该 BUS 的协议类型确认导出策略。
+            当前选中关联 1 个 CAN BUS。请确认 J1939 协议导出格式。
           </template>
           <template v-else>
-            当前选中同时包含 J1939 与其他协议。请选择要导出的 DBC 组。
+            当前选中同时包含 J1939 与其他协议。请选择 J1939 协议的导出格式，所有协议将合并到同一个 DBC 文件。
           </template>
         </p>
 
@@ -795,50 +796,19 @@
                 :checked="group.selected"
                 @change="toggleDbcExportBusSelection(group.busId, $event.target.checked)"
               >
-              {{ group.busName }}（ECU {{ group.nodeCount }}）
+              {{ group.busName }}（ECU {{ group.nodeCount }}<template v-if="group.hasJ1939 && group.hasOthers">，含 J1939 {{ group.j1939Count }} + 其他 {{ group.otherCount }}</template>）
             </label>
 
-            <div v-if="group.selected" class="can-export-bus-protocols ps-4">
-              <label v-if="group.requiresProtocolSelection" class="form-check-label d-flex align-items-center gap-2 mb-1 can-export-option-item">
-                <input
-                  class="form-check-input can-export-check"
-                  type="checkbox"
-                  :checked="group.includeOthers"
-                  @change="toggleDbcExportGroupProtocol(group.busId, 'others', $event.target.checked)"
-                >
-                导出其他协议（{{ group.otherCount }} 个 ECU）
-              </label>
-
-              <div v-if="group.requiresProtocolSelection" class="d-flex align-items-center gap-2 mb-1">
-                <label class="form-check-label d-flex align-items-center gap-2 mb-0 can-export-option-item">
-                  <input
-                    class="form-check-input can-export-check"
-                    type="checkbox"
-                    :checked="group.includeJ1939"
-                    @change="toggleDbcExportGroupProtocol(group.busId, 'j1939', $event.target.checked)"
-                  >
-                  导出 J1939（{{ group.j1939Count }} 个 ECU）
-                </label>
-                <select
-                  v-if="group.includeJ1939"
-                  class="form-select form-select-sm can-export-j1939-select"
-                  :value="group.j1939Mode"
-                  @change="updateDbcExportGroupJ1939Mode(group.busId, $event.target.value)"
-                >
-                  <option value="dedicated">J1939 专用</option>
-                  <option value="downgrade">退化合并</option>
-                </select>
-              </div>
-
-              <div v-else-if="group.hasJ1939" class="d-flex align-items-center gap-2 mb-1">
-                <span class="can-side-hint p-0">仅包含 J1939，导出方式：</span>
+            <div v-if="group.selected && group.hasJ1939" class="can-export-bus-protocols ps-4">
+              <div class="d-flex align-items-center gap-2 mb-1">
+                <span class="can-side-hint p-0">J1939 协议导出格式：</span>
                 <select
                   class="form-select form-select-sm can-export-j1939-select"
                   :value="group.j1939Mode"
                   @change="updateDbcExportGroupJ1939Mode(group.busId, $event.target.value)"
                 >
-                  <option value="dedicated">J1939 专用</option>
-                  <option value="downgrade">退化合并</option>
+                  <option value="dedicated">保留 J1939 协议定义</option>
+                  <option value="downgrade">降级为标准扩展帧</option>
                 </select>
               </div>
             </div>
@@ -846,14 +816,22 @@
         </div>
 
         <div v-else class="can-export-option-list">
-          <label class="form-check-label d-flex align-items-center gap-2 mb-2 can-export-option-item">
-            <input v-if="pendingDbcExport.j1939Count > 0" v-model="dbcExportSelection.includeJ1939" class="form-check-input can-export-check" type="checkbox">
-            导出 J1939 DBC（{{ pendingDbcExport.j1939Count }} 个 ECU）
-          </label>
-          <label class="form-check-label d-flex align-items-center gap-2 mb-2 can-export-option-item">
-            <input v-if="pendingDbcExport.otherCount > 0" v-model="dbcExportSelection.includeOthers" class="form-check-input can-export-check" type="checkbox">
-            导出其他协议 DBC（{{ pendingDbcExport.otherCount }} 个 ECU）
-          </label>
+          <p class="can-import-note can-export-note mb-2">
+            共 {{ pendingDbcExport.originalNodeCount }} 个 ECU
+            <template v-if="pendingDbcExport.j1939Count > 0 && pendingDbcExport.otherCount > 0">
+              （含 J1939 {{ pendingDbcExport.j1939Count }} + 其他 {{ pendingDbcExport.otherCount }}）
+            </template>
+          </p>
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="can-side-hint p-0">J1939 协议导出格式：</span>
+            <select
+              class="form-select form-select-sm can-export-j1939-select"
+              v-model="dbcExportSelection.j1939Mode"
+            >
+              <option value="dedicated">保留 J1939 协议定义</option>
+              <option value="downgrade">降级为标准扩展帧</option>
+            </select>
+          </div>
         </div>
 
         <div class="d-flex gap-2 mt-3 justify-content-end">
@@ -921,6 +899,7 @@ import EcuMessageEditor from '@/features/can-arch/ui/components/EcuMessageEditor
 import {
   canProtocols,
   parseDbcNodes,
+  parseDbcMessages,
   serializeNodesToDbc,
   validateCanNodeDraft,
 } from '@/features/can-arch/services/can-arch-dbc.js';
@@ -1050,6 +1029,7 @@ const configImportInputRef = ref(null);
 const importModalOpen = ref(false);
 const importStage = ref('choose');
 const importCandidates = ref([]);
+const parsedDbcMessages = ref([]);
 const importTarget = reactive({
   connectionMode: 'existing',
   busId: '',
@@ -1298,7 +1278,6 @@ const {
   closeDbcExportModal,
   syncPendingDbcExportCountsByBusSelection,
   toggleDbcExportBusSelection,
-  toggleDbcExportGroupProtocol,
   updateDbcExportGroupJ1939Mode,
   openDbcExportForBusGroups,
   openDbcExportForProtocolSplit,
@@ -3612,8 +3591,6 @@ function buildDbcExportBusGroups() {
       hasOthers: otherNodes.length > 0,
       requiresProtocolSelection: j1939Nodes.length > 0 && otherNodes.length > 0,
       selected: true,
-      includeJ1939: j1939Nodes.length > 0,
-      includeOthers: otherNodes.length > 0,
       j1939Mode: 'dedicated',
     });
   }
@@ -3679,75 +3656,47 @@ function mergeStandardExportNodes(baseNodes, addonNodes) {
   }));
 }
 
-function executeDbcExport(j1939Nodes, otherNodes, options = {}) {
-  const includeJ1939 = options.includeJ1939 !== false;
-  const includeOthers = options.includeOthers !== false;
+function executeDbcExport(nodes, options = {}) {
   const j1939Mode = options.j1939Mode === 'downgrade' ? 'downgrade' : 'dedicated';
   const silentStatus = options.silentStatus === true;
   const dateTag = options.dateTag || new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
   const filenameBase = options.filenameBase || `can-arch-nodes-${dateTag}`;
-  const canExportJ1939 = includeJ1939 && j1939Nodes.length > 0;
-  const canExportOthers = includeOthers && otherNodes.length > 0;
-  if (!canExportJ1939 && !canExportOthers) {
+
+  const safeNodes = Array.isArray(nodes) ? nodes : [];
+  if (safeNodes.length === 0) {
     if (!silentStatus) {
-      setStatus('请至少选择一种协议导出。', true);
+      setStatus('没有可导出的 ECU。', true);
     }
     return null;
   }
 
-  let exportedFiles = 0;
-
-  if (canExportJ1939 && j1939Mode === 'downgrade') {
-    const downgradedJ1939Nodes = downgradeJ1939NodesToStandard(j1939Nodes);
-    const mergedNodes = mergeStandardExportNodes(
-      canExportOthers ? otherNodes : [],
-      downgradedJ1939Nodes,
-    );
-    const dbc = serializeNodesToDbc(mergedNodes, { profile: 'standard' });
-    downloadTextFile(`${filenameBase}.dbc`, dbc);
-    exportedFiles = 1;
-    const mergedNodeCount = new Set(mergedNodes.map((item) => item.id)).size;
-    if (!silentStatus) {
-      setStatus(`已导出 1 个普通 DBC 文件（J1939 已退化），覆盖 ${mergedNodeCount} 个 ECU。`);
+  const exportNodes = safeNodes.map((node) => {
+    if (j1939Mode === 'downgrade') {
+      const protocols = normalizeProtocolsList(node.protocols);
+      const downgraded = protocols.map((p) =>
+        p === canProtocols.J1939 ? canProtocols.GENERIC_EXT : p
+      );
+      return {
+        ...node,
+        protocols: downgraded,
+        j1939Addresses: [],
+      };
     }
-    return {
-      exportedFiles,
-      exportedNodeIds: [...new Set(mergedNodes.map((item) => item.id))],
-    };
-  }
+    return node;
+  });
 
-  const hasBothDedicated = canExportJ1939 && canExportOthers;
-  if (canExportJ1939) {
-    const dbc = serializeNodesToDbc(j1939Nodes, { profile: 'j1939' });
-    const filename = hasBothDedicated
-      ? `${filenameBase}-j1939.dbc`
-      : `${filenameBase}.dbc`;
-    downloadTextFile(filename, dbc);
-    exportedFiles += 1;
-  }
+  const dbc = serializeNodesToDbc(exportNodes, { profile: 'standard' });
+  downloadTextFile(`${filenameBase}.dbc`, dbc);
 
-  if (canExportOthers) {
-    const dbc = serializeNodesToDbc(otherNodes, { profile: 'standard' });
-    const filename = hasBothDedicated
-      ? `${filenameBase}-other.dbc`
-      : `${filenameBase}.dbc`;
-    downloadTextFile(filename, dbc);
-    exportedFiles += 1;
-  }
-
-  const exportedNodes = new Set([
-    ...j1939Nodes.map((item) => item.id),
-    ...otherNodes.map((item) => item.id),
-  ]).size;
+  const uniqueNodeIds = new Set(exportNodes.map((item) => item.id));
   if (!silentStatus) {
-    setStatus(`已导出 ${exportedFiles} 个 DBC 文件，覆盖 ${exportedNodes} 个 ECU。`);
+    const modeDesc = j1939Mode === 'downgrade' ? '（J1939 已降级为标准扩展帧）' : '';
+    setStatus(`已导出 1 个 DBC 文件${modeDesc}，覆盖 ${uniqueNodeIds.size} 个 ECU。`);
   }
+
   return {
-    exportedFiles,
-    exportedNodeIds: [...new Set([
-      ...j1939Nodes.map((item) => item.id),
-      ...otherNodes.map((item) => item.id),
-    ])],
+    exportedFiles: 1,
+    exportedNodeIds: [...uniqueNodeIds],
   };
 }
 
@@ -3759,21 +3708,12 @@ function confirmDbcExportSelection() {
       return;
     }
 
-    const invalidGroup = selectedGroups.find((group) => !group.includeJ1939 && !group.includeOthers);
-    if (invalidGroup) {
-      setStatus(`CAN BUS ${invalidGroup.busName} 未选择导出协议，请先选择协议或取消该 BUS。`, true);
-      return;
-    }
-
     const dateTag = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
     let exportedFiles = 0;
     const exportedNodeIds = new Set();
     for (const group of selectedGroups) {
-      if (!group.includeJ1939 && !group.includeOthers) continue;
       const filenameBase = `can-arch-${sanitizeFilenamePart(group.busName)}-${dateTag}`;
-      const result = executeDbcExport(group.j1939Nodes, group.otherNodes, {
-        includeJ1939: group.includeJ1939,
-        includeOthers: group.includeOthers,
+      const result = executeDbcExport(group.exportNodes, {
         j1939Mode: group.j1939Mode,
         silentStatus: true,
         filenameBase,
@@ -3797,11 +3737,8 @@ function confirmDbcExportSelection() {
   }
 
   const result = executeDbcExport(
-    pendingDbcExport.j1939Nodes,
-    pendingDbcExport.otherNodes,
+    pendingDbcExport.originalNodes,
     {
-      includeJ1939: dbcExportSelection.includeJ1939,
-      includeOthers: dbcExportSelection.includeOthers,
       j1939Mode: dbcExportSelection.j1939Mode,
     }
   );
@@ -3824,9 +3761,14 @@ function exportSelectedNodes() {
   if (busGroups.length === 1) {
     const [group] = busGroups;
     if (group.hasJ1939) {
-      openDbcExportForBusGroups(busGroups);
+      openDbcExportForProtocolSplit(group.exportNodes, group.j1939Nodes, group.otherNodes, group.messagesByNode);
       return;
     }
+    executeDbcExport(group.exportNodes, {
+      j1939Mode: 'dedicated',
+      messagesByNode: group.messagesByNode,
+    });
+    return;
   }
 
   const exportNodes = buildExportNodeProjections();
@@ -3836,14 +3778,12 @@ function exportSelectedNodes() {
   }
 
   const { j1939Nodes, otherNodes } = splitExportNodesByProtocol(exportNodes);
-  if (j1939Nodes.length > 0 && otherNodes.length > 0) {
-    openDbcExportForProtocolSplit(j1939Nodes, otherNodes);
+  if (j1939Nodes.length > 0) {
+    openDbcExportForProtocolSplit(exportNodes, j1939Nodes, otherNodes);
     return;
   }
 
-  executeDbcExport(j1939Nodes, otherNodes, {
-    includeJ1939: true,
-    includeOthers: true,
+  executeDbcExport(exportNodes, {
     j1939Mode: 'dedicated',
   });
 }
@@ -3867,6 +3807,7 @@ function triggerImportDialog() {
 function closeImportModal() {
   importModalOpen.value = false;
   importCandidates.value = [];
+  parsedDbcMessages.value = [];
   importStage.value = 'choose';
   importTarget.connectionMode = buses.value.length > 0 ? 'existing' : 'new';
   importTarget.busId = '';
@@ -4086,6 +4027,63 @@ function confirmImportCandidates() {
   selectedLinkId.value = '';
   syncDraftFromSelected();
   syncBusDraftFromSelected();
+
+  if (parsedDbcMessages.value.length > 0) {
+    const tokenToNodeId = {};
+    for (const candidate of selected) {
+      const token = candidate.name;
+      if (candidate.resolveMode === 'merge') {
+        const mergeNodeName = resolveCandidateMergeNodeName(candidate);
+        const existingNode = nodes.value.find((node) => node.name === mergeNodeName);
+        if (existingNode) {
+          tokenToNodeId[token] = existingNode.id;
+        }
+      } else {
+        const foundNode = nodes.value.find((node) => node.name === candidateDisplayName(candidate));
+        if (foundNode) {
+          tokenToNodeId[token] = foundNode.id;
+        }
+      }
+    }
+
+    for (const msg of parsedDbcMessages.value) {
+      const senderToken = Array.isArray(msg.senders) && msg.senders.length > 0 ? msg.senders[0] : null;
+      const senderId = senderToken ? tokenToNodeId[senderToken] : null;
+      const receiverIds = Array.isArray(msg.receivers)
+        ? msg.receivers.map((rt) => tokenToNodeId[rt]).filter(Boolean)
+        : [];
+
+      if (senderId) {
+        const senderNode = nodes.value.find((n) => n.id === senderId);
+        if (senderNode) {
+          if (!senderNode.messageWorkspace || typeof senderNode.messageWorkspace !== 'object') {
+            senderNode.messageWorkspace = {};
+          }
+          if (!senderNode.messageWorkspace[targetBusId]) {
+            senderNode.messageWorkspace[targetBusId] = { rxMessages: [], txMessages: [] };
+          }
+          const txMsg = { ...msg, senders: [senderId], receivers: [...receiverIds] };
+          senderNode.messageWorkspace[targetBusId].txMessages.push(txMsg);
+        }
+      }
+
+      for (const receiverId of receiverIds) {
+        if (receiverId === senderId) continue;
+        const receiverNode = nodes.value.find((n) => n.id === receiverId);
+        if (receiverNode) {
+          if (!receiverNode.messageWorkspace || typeof receiverNode.messageWorkspace !== 'object') {
+            receiverNode.messageWorkspace = {};
+          }
+          if (!receiverNode.messageWorkspace[targetBusId]) {
+            receiverNode.messageWorkspace[targetBusId] = { rxMessages: [], txMessages: [] };
+          }
+          const rxMsg = { ...msg, senders: senderId ? [senderId] : [], receivers: [receiverId] };
+          receiverNode.messageWorkspace[targetBusId].rxMessages.push(rxMsg);
+        }
+      }
+    }
+  }
+
   persistNodes();
   closeImportModal();
   setStatus(`已导入新增 ${importedCount} 个，合并 ${mergedCount} 个，并连接到 CAN BUS：${target.busName}。`);
@@ -4118,6 +4116,9 @@ async function importDbcFile(file) {
       return;
     }
 
+    const messages = parseDbcMessages(text);
+    parsedDbcMessages.value = Array.isArray(messages) ? messages : [];
+
     importCandidates.value = buildImportCandidatesFromParsed(parsed);
 
     importStage.value = 'review';
@@ -4135,10 +4136,6 @@ async function importDbcFile(file) {
 
 function handleDocumentKeydown(event) {
   if (!props.active) return;
-  if (ecuMessageEditor.active) return;
-  const target = event.target;
-  const tagName = String(target?.tagName || '').toLowerCase();
-  const editable = tagName === 'input' || tagName === 'textarea' || target?.isContentEditable;
 
   const isToggleFullscreen = (event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f';
   if (isToggleFullscreen) {
@@ -4146,6 +4143,24 @@ function handleDocumentKeydown(event) {
     toggleFullscreen();
     return;
   }
+
+  if (event.key === 'Escape') {
+    if (isFullscreen.value) {
+      event.preventDefault();
+      toggleFullscreen();
+      return;
+    }
+    if (!ecuMessageEditor.active) {
+      closeContextMenu();
+    }
+    return;
+  }
+
+  if (ecuMessageEditor.active) return;
+
+  const target = event.target;
+  const tagName = String(target?.tagName || '').toLowerCase();
+  const editable = tagName === 'input' || tagName === 'textarea' || target?.isContentEditable;
 
   if (editable) return;
 
@@ -4185,15 +4200,6 @@ function handleDocumentKeydown(event) {
       deleteSelected();
       return;
     }
-  }
-
-  if (event.key === 'Escape') {
-    if (isFullscreen.value) {
-      event.preventDefault();
-      toggleFullscreen();
-      return;
-    }
-    closeContextMenu();
   }
 }
 

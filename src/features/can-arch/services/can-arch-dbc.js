@@ -1,3 +1,5 @@
+import { detectMessageErrors } from '@/features/can-arch/app/composables/useEcuMessageWorkspace.js';
+
 const PROTOCOL_J1939 = 'J1939';
 const PROTOCOL_CANOPEN = 'CANOPEN';
 const PROTOCOL_GENERIC_STD = 'GENERIC_STD';
@@ -9,7 +11,6 @@ const ATTR_J1939_ADDRS = 'J1939_ADDRS';
 const ATTR_CANOPEN_NODE_IDS = 'CANOPEN_NODE_IDS';
 const ATTR_GENERIC_FRAME_FORMAT = 'GENERIC_FRAME_FORMAT';
 const ATTR_NM_STATION_ADDRESS = 'NMSTATIONADDRESS';
-const SPLIT_TOKEN_MARKER = '__CA__';
 
 const PROTOCOL_ATTR_KEYS = new Set([
   ATTR_PROTOCOLS,
@@ -142,180 +143,52 @@ function normalizeIntArray(value) {
   return [...new Set(numbers)];
 }
 
-function buildSplitTokenSuffix(protocol, addressValue) {
-  if (protocol === PROTOCOL_J1939) {
-    const token = Number.isInteger(addressValue) ? String(addressValue) : 'N';
-    return `${SPLIT_TOKEN_MARKER}J1939_A_${token}`;
-  }
-  if (protocol === PROTOCOL_CANOPEN) {
-    const token = Number.isInteger(addressValue) ? String(addressValue) : 'N';
-    return `${SPLIT_TOKEN_MARKER}CANOPEN_A_${token}`;
-  }
-  if (protocol === PROTOCOL_GENERIC_STD) {
-    return `${SPLIT_TOKEN_MARKER}GEN_STD`;
-  }
-  if (protocol === PROTOCOL_GENERIC_EXT) {
-    return `${SPLIT_TOKEN_MARKER}GEN_EXT`;
-  }
-  return `${SPLIT_TOKEN_MARKER}GENERIC`;
+function hexToDecimal(hexStr) {
+  const cleaned = String(hexStr || '').replace(/^0x/i, '');
+  const parsed = Number.parseInt(cleaned, 16);
+  return Number.isNaN(parsed) ? 0 : parsed;
 }
 
-function explodeNodeToDbcRecords(node) {
-  const protocols = normalizeProtocolsList(
-    parseProtocolList((Array.isArray(node?.protocols) ? node.protocols : []).join(',')),
-    node?.genericFrameFormat
-  );
-  const j1939Addresses = normalizeIntArray(node?.j1939Addresses);
-  const canopenNodeIds = normalizeIntArray(node?.canopenNodeIds);
-  const effectiveProtocols = protocols.length > 0 ? protocols : [PROTOCOL_GENERIC_STD];
-  const hasComplexProtocols = effectiveProtocols.length > 1;
-  const hasComplexAddresses = j1939Addresses.length > 1 || canopenNodeIds.length > 1;
-  const shouldSplit = hasComplexProtocols || hasComplexAddresses;
+function dbcByteOrder(byteOrder) {
+  return (byteOrder === 'intel' || byteOrder === 'little') ? '1' : '0';
+}
 
-  if (!shouldSplit) {
-    return [{
-      node,
-      suffix: '',
-      protocols: effectiveProtocols,
-      j1939Addresses,
-      canopenNodeIds,
-    }];
-  }
+function dbcValueType(signed) {
+  return signed ? '-' : '+';
+}
 
-  const records = [];
-  const hasJ1939 = effectiveProtocols.includes(PROTOCOL_J1939) || j1939Addresses.length > 0;
-  const hasCanopen = effectiveProtocols.includes(PROTOCOL_CANOPEN) || canopenNodeIds.length > 0;
-  const hasGenericStd = effectiveProtocols.includes(PROTOCOL_GENERIC_STD);
-  const hasGenericExt = effectiveProtocols.includes(PROTOCOL_GENERIC_EXT);
+function serializeMessagesToDbc(messages = [], senderToken, receiverTokens = []) {
+  const lines = [];
+  const safeMessages = Array.isArray(messages) ? messages : [];
 
-  if (hasJ1939) {
-    if (j1939Addresses.length === 0) {
-      records.push({
-        node,
-        suffix: buildSplitTokenSuffix(PROTOCOL_J1939, null),
-        protocols: [PROTOCOL_J1939],
-        j1939Addresses: [],
-        canopenNodeIds: [],
-      });
-    } else {
-      for (const address of j1939Addresses) {
-        records.push({
-          node,
-          suffix: buildSplitTokenSuffix(PROTOCOL_J1939, address),
-          protocols: [PROTOCOL_J1939],
-          j1939Addresses: [address],
-          canopenNodeIds: [],
-        });
-      }
+  for (const msg of safeMessages) {
+    if (!msg) continue;
+    const canId = hexToDecimal(msg.idHex);
+    const msgName = nodeNameToToken(msg.name || 'MSG');
+    const dlc = Number.isInteger(msg.dlc) ? msg.dlc : 8;
+    const sender = senderToken || 'Vector__XXX';
+    lines.push('');
+    lines.push(`BO_ ${canId} ${msgName}: ${dlc} ${sender}`);
+
+    const signals = Array.isArray(msg.signals) ? msg.signals : [];
+    for (const sig of signals) {
+      if (!sig) continue;
+      const sigName = nodeNameToToken(sig.name || 'SIG');
+      const startBit = sig.startBit ?? 0;
+      const length = sig.length ?? 8;
+      const byteOrd = dbcByteOrder(msg.byteOrder);
+      const valType = dbcValueType(sig.signed);
+      const factor = sig.factor ?? 1;
+      const offset = sig.offset ?? 0;
+      const min = sig.min ?? 0;
+      const max = sig.max ?? ((1 << Math.min(length, 32)) - 1);
+      const unit = String(sig.unit || '');
+      const receivers = receiverTokens.length > 0 ? receiverTokens.join(',') : 'Vector__XXX';
+      lines.push(` SG_ ${sigName} : ${startBit}|${length}@${byteOrd}${valType} (${factor},${offset}) [${min}|${max}] "${unit}" ${receivers}`);
     }
   }
 
-  if (hasCanopen) {
-    if (canopenNodeIds.length === 0) {
-      records.push({
-        node,
-        suffix: buildSplitTokenSuffix(PROTOCOL_CANOPEN, null),
-        protocols: [PROTOCOL_CANOPEN],
-        j1939Addresses: [],
-        canopenNodeIds: [],
-      });
-    } else {
-      for (const nodeId of canopenNodeIds) {
-        records.push({
-          node,
-          suffix: buildSplitTokenSuffix(PROTOCOL_CANOPEN, nodeId),
-          protocols: [PROTOCOL_CANOPEN],
-          j1939Addresses: [],
-          canopenNodeIds: [nodeId],
-        });
-      }
-    }
-  }
-
-  if (hasGenericStd) {
-    records.push({
-      node,
-      suffix: buildSplitTokenSuffix(PROTOCOL_GENERIC_STD, null),
-      protocols: [PROTOCOL_GENERIC_STD],
-      j1939Addresses: [],
-      canopenNodeIds: [],
-    });
-  }
-
-  if (hasGenericExt) {
-    records.push({
-      node,
-      suffix: buildSplitTokenSuffix(PROTOCOL_GENERIC_EXT, null),
-      protocols: [PROTOCOL_GENERIC_EXT],
-      j1939Addresses: [],
-      canopenNodeIds: [],
-    });
-  }
-
-  if (records.length === 0) {
-    records.push({
-      node,
-      suffix: buildSplitTokenSuffix('', null),
-      protocols: [PROTOCOL_GENERIC_STD],
-      j1939Addresses: [],
-      canopenNodeIds: [],
-    });
-  }
-
-  return records;
-}
-
-function parseSplitToken(token) {
-  const index = token.indexOf(SPLIT_TOKEN_MARKER);
-  if (index < 0) return null;
-
-  const baseName = token.slice(0, index);
-  const suffix = token.slice(index + SPLIT_TOKEN_MARKER.length);
-  if (!baseName || !suffix) return null;
-
-  if (suffix === 'GENERIC') {
-    return {
-      baseName,
-      protocol: PROTOCOL_GENERIC_STD,
-      address: null,
-    };
-  }
-
-  if (suffix === 'GEN_STD') {
-    return {
-      baseName,
-      protocol: PROTOCOL_GENERIC_STD,
-      address: null,
-    };
-  }
-
-  if (suffix === 'GEN_EXT') {
-    return {
-      baseName,
-      protocol: PROTOCOL_GENERIC_EXT,
-      address: null,
-    };
-  }
-
-  const j1939Matched = suffix.match(/^J1939_A_([0-9]+|N)$/);
-  if (j1939Matched) {
-    return {
-      baseName,
-      protocol: PROTOCOL_J1939,
-      address: j1939Matched[1] === 'N' ? null : Number.parseInt(j1939Matched[1], 10),
-    };
-  }
-
-  const canopenMatched = suffix.match(/^CANOPEN_A_([0-9]+|N)$/);
-  if (canopenMatched) {
-    return {
-      baseName,
-      protocol: PROTOCOL_CANOPEN,
-      address: canopenMatched[1] === 'N' ? null : Number.parseInt(canopenMatched[1], 10),
-    };
-  }
-
-  return null;
+  return lines;
 }
 
 export function serializeNodesToDbc(nodes = [], options = {}) {
@@ -323,13 +196,21 @@ export function serializeNodesToDbc(nodes = [], options = {}) {
   const profile = options?.profile === 'j1939' ? 'j1939' : 'standard';
   const usedTokens = new Set();
   const tokenRecords = safeNodes
-    .flatMap((node) => explodeNodeToDbcRecords(node))
-    .map((record) => {
-      const base = nodeNameToToken(record.node?.name || 'Node');
-      const rawToken = `${base}${record.suffix}`;
+    .map((node) => {
+      const base = nodeNameToToken(node?.name || 'Node');
+      const protocols = normalizeProtocolsList(
+        parseProtocolList((Array.isArray(node?.protocols) ? node.protocols : []).join(',')),
+        node?.genericFrameFormat
+      );
+      const effectiveProtocols = protocols.length > 0 ? protocols : [PROTOCOL_GENERIC_STD];
+      const j1939Addresses = normalizeIntArray(node?.j1939Addresses);
+      const canopenNodeIds = normalizeIntArray(node?.canopenNodeIds);
       return {
-        ...record,
-        token: buildUniqueToken(rawToken, usedTokens),
+        node,
+        token: buildUniqueToken(base, usedTokens),
+        protocols: effectiveProtocols,
+        j1939Addresses,
+        canopenNodeIds,
       };
     });
 
@@ -352,7 +233,6 @@ export function serializeNodesToDbc(nodes = [], options = {}) {
   ];
 
   for (const {
-    node,
     token,
     protocols: effectiveProtocols,
     j1939Addresses: effectiveJ1939Addresses,
@@ -370,6 +250,57 @@ export function serializeNodesToDbc(nodes = [], options = {}) {
       `BA_ "${ATTR_CANOPEN_NODE_IDS}" BU_ ${token} "${escapeDbcString(effectiveCanopenNodeIds.join(','))}";`,
       `BA_ "${ATTR_GENERIC_FRAME_FORMAT}" BU_ ${token} "${escapeDbcString(genericFrameFormat)}";`
     );
+  }
+
+  lines.push('');
+
+  const messagesByNode = options?.messagesByNode;
+  if (messagesByNode && typeof messagesByNode === 'object') {
+    const tokenToName = {};
+    for (const record of tokenRecords) {
+      tokenToName[record.node.id] = record.token;
+    }
+
+    const allRxMessages = [];
+    const allTxMessages = [];
+    for (const record of tokenRecords) {
+      const nodeMessages = messagesByNode[record.node.id];
+      if (!nodeMessages || typeof nodeMessages !== 'object') continue;
+      allRxMessages.push(...(Array.isArray(nodeMessages.rxMessages) ? nodeMessages.rxMessages : []));
+      allTxMessages.push(...(Array.isArray(nodeMessages.txMessages) ? nodeMessages.txMessages : []));
+    }
+    const errorIds = detectMessageErrors(allRxMessages, allTxMessages);
+
+    for (const record of tokenRecords) {
+      const nodeId = record.node.id;
+      const nodeMessages = messagesByNode[nodeId];
+      if (!nodeMessages || typeof nodeMessages !== 'object') continue;
+
+      let txMessages = Array.isArray(nodeMessages.txMessages) ? nodeMessages.txMessages : [];
+      let rxMessages = Array.isArray(nodeMessages.rxMessages) ? nodeMessages.rxMessages : [];
+      txMessages = txMessages.filter((msg) => msg && !errorIds.has(msg.id));
+      rxMessages = rxMessages.filter((msg) => msg && !errorIds.has(msg.id));
+
+      const allTokenNames = tokenRecords.map((r) => r.token);
+
+      if (txMessages.length > 0) {
+        lines.push(...serializeMessagesToDbc(txMessages, record.token, allTokenNames));
+      }
+      if (rxMessages.length > 0) {
+        const senderTokens = [];
+        for (const msg of rxMessages) {
+          const senders = Array.isArray(msg.senders) ? msg.senders : [];
+          for (const senderId of senders) {
+            const senderToken = tokenToName[senderId];
+            if (senderToken && !senderTokens.includes(senderToken)) {
+              senderTokens.push(senderToken);
+            }
+          }
+        }
+        const rxSender = senderTokens.length > 0 ? senderTokens[0] : record.token;
+        lines.push(...serializeMessagesToDbc(rxMessages, rxSender, allTokenNames));
+      }
+    }
   }
 
   lines.push('');
@@ -466,19 +397,7 @@ export function parseDbcNodes(dbcText) {
 
     protocols = normalizeProtocolsList(protocols, genericFrameFormat);
 
-    const splitInfo = parseSplitToken(token);
-    const nodeName = splitInfo?.baseName || token;
-    if (splitInfo?.protocol) {
-      if (!protocols.includes(splitInfo.protocol)) {
-        protocols = [...protocols, splitInfo.protocol];
-      }
-      if (splitInfo.protocol === PROTOCOL_J1939 && Number.isInteger(splitInfo.address)) {
-        j1939Addresses = [...j1939Addresses, splitInfo.address];
-      }
-      if (splitInfo.protocol === PROTOCOL_CANOPEN && Number.isInteger(splitInfo.address)) {
-        canopenNodeIds = [...canopenNodeIds, splitInfo.address];
-      }
-    }
+    const nodeName = token;
 
     if (!mergedNodes.has(nodeName)) {
       mergedNodes.set(nodeName, {
@@ -505,6 +424,95 @@ export function parseDbcNodes(dbcText) {
   }
 
   return [...mergedNodes.values()];
+}
+
+export function parseDbcMessages(dbcText) {
+  const lines = String(dbcText || '').split(/\r?\n/);
+  const tokens = parseBuTokens(dbcText);
+  const tokenSet = new Set(tokens);
+
+  const messages = [];
+  let currentMessage = null;
+
+  const boPattern = /^\s*BO_\s+(\d+)\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(\d+)\s+([A-Za-z_][A-Za-z0-9_]*)/;
+  const sgPattern = /^\s*SG_\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\s*:\s*(\d+)\|(\d+)@([01])([+-])\s*\(([^,]+),([^)]+)\)\s*\[([^|]+)\|([^\]]+)\]\s*"([^"]*)"\s*(.*))?/;
+
+  for (const line of lines) {
+    const boMatch = line.match(boPattern);
+    if (boMatch) {
+      if (currentMessage && currentMessage.signals.length > 0) {
+        messages.push(currentMessage);
+      }
+      const canId = parseInt(boMatch[1], 10);
+      const name = boMatch[2];
+      const dlc = parseInt(boMatch[3], 10) || 8;
+      const sender = boMatch[4];
+      currentMessage = {
+        id: crypto.randomUUID ? crypto.randomUUID() : `msg_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+        name: name,
+        idHex: `0x${canId.toString(16).toUpperCase()}`,
+        dlc: dlc,
+        senders: tokenSet.has(sender) ? [sender] : [],
+        receivers: [],
+        signals: [],
+        protocol: 'generic_std',
+        color: '#8a6d4f',
+        triggerMode: 'cyclic',
+        txMode: 'periodic',
+        periodMs: 100,
+        byteOrder: 'intel',
+        layoutMode: 'compact',
+        comment: '',
+        j1939: { enabled: false, mode: 'id', id: '', pgn: '', priority: 6, sa: '', da: '' },
+      };
+      continue;
+    }
+
+    const sgMatch = line.match(sgPattern);
+    if (sgMatch && currentMessage) {
+      const sigName = sgMatch[1];
+      if (sgMatch[2] !== undefined) {
+        const startBit = parseInt(sgMatch[2], 10) || 0;
+        const length = parseInt(sgMatch[3], 10) || 8;
+        const byteOrder = sgMatch[4] === '1' ? 'intel' : 'motorola';
+        if (byteOrder === 'intel') {
+          currentMessage.byteOrder = 'intel';
+        }
+        const signed = sgMatch[5] === '-';
+        const factor = parseFloat(sgMatch[6]) || 1;
+        const offset = parseFloat(sgMatch[7]) || 0;
+        const min = parseFloat(sgMatch[8]) || 0;
+        const max = parseFloat(sgMatch[9]) || 0;
+        const unit = sgMatch[10] || '';
+        const receiversStr = (sgMatch[11] || '').trim();
+        const receiverTokens = receiversStr.split(/\s*,\s*/).filter((t) => tokenSet.has(t));
+        for (const rt of receiverTokens) {
+          if (!currentMessage.receivers.includes(rt)) {
+            currentMessage.receivers.push(rt);
+          }
+        }
+        currentMessage.signals.push({
+          id: crypto.randomUUID ? crypto.randomUUID() : `sig_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+          name: sigName,
+          startBit,
+          length,
+          signed,
+          factor,
+          offset,
+          min,
+          max,
+          unit,
+          comment: '',
+        });
+      }
+    }
+  }
+
+  if (currentMessage && currentMessage.signals.length > 0) {
+    messages.push(currentMessage);
+  }
+
+  return messages;
 }
 
 export function normalizeIntegerList(input) {

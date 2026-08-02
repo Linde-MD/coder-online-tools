@@ -3,15 +3,15 @@ import { computed, reactive, ref } from 'vue';
 export function useDbcExportSelection() {
   const dbcExportModalOpen = ref(false);
   const dbcExportSelection = reactive({
-    includeJ1939: true,
-    includeOthers: true,
     j1939Mode: 'dedicated',
     selectedBusIds: [],
   });
 
   const pendingDbcExport = reactive({
+    originalNodes: [],
     j1939Nodes: [],
     otherNodes: [],
+    originalNodeCount: 0,
     j1939Count: 0,
     otherCount: 0,
     busGroups: [],
@@ -19,19 +19,16 @@ export function useDbcExportSelection() {
 
   const canConfirmDbcExport = computed(() => {
     if (pendingDbcExport.busGroups.length > 0) {
-      const selectedGroups = pendingDbcExport.busGroups.filter((group) => group.selected);
-      if (selectedGroups.length === 0) return false;
-      return selectedGroups.every((group) => group.includeJ1939 || group.includeOthers);
+      return pendingDbcExport.busGroups.some((group) => group.selected);
     }
-
-    const canUseJ1939 = pendingDbcExport.j1939Count > 0 && dbcExportSelection.includeJ1939;
-    const canUseOthers = pendingDbcExport.otherCount > 0 && dbcExportSelection.includeOthers;
-    return canUseJ1939 || canUseOthers;
+    return pendingDbcExport.originalNodeCount > 0;
   });
 
   function resetPendingDbcExport() {
+    pendingDbcExport.originalNodes = [];
     pendingDbcExport.j1939Nodes = [];
     pendingDbcExport.otherNodes = [];
+    pendingDbcExport.originalNodeCount = 0;
     pendingDbcExport.j1939Count = 0;
     pendingDbcExport.otherCount = 0;
     pendingDbcExport.busGroups = [];
@@ -39,8 +36,6 @@ export function useDbcExportSelection() {
 
   function closeDbcExportModal() {
     dbcExportModalOpen.value = false;
-    dbcExportSelection.includeJ1939 = true;
-    dbcExportSelection.includeOthers = true;
     dbcExportSelection.j1939Mode = 'dedicated';
     dbcExportSelection.selectedBusIds = [];
     resetPendingDbcExport();
@@ -52,15 +47,11 @@ export function useDbcExportSelection() {
     const otherNodeIds = new Set();
     for (const group of pendingDbcExport.busGroups) {
       if (!group.selected) continue;
-      if (group.includeJ1939) {
-        for (const node of group.j1939Nodes) {
-          j1939NodeIds.add(node.id);
-        }
+      for (const node of group.j1939Nodes) {
+        j1939NodeIds.add(node.id);
       }
-      if (group.includeOthers) {
-        for (const node of group.otherNodes) {
-          otherNodeIds.add(node.id);
-        }
+      for (const node of group.otherNodes) {
+        otherNodeIds.add(node.id);
       }
     }
     pendingDbcExport.j1939Count = j1939NodeIds.size;
@@ -71,25 +62,6 @@ export function useDbcExportSelection() {
     const group = pendingDbcExport.busGroups.find((item) => item.busId === busId);
     if (!group) return;
     group.selected = checked;
-    if (!checked) {
-      group.includeJ1939 = false;
-      group.includeOthers = false;
-    } else {
-      group.includeJ1939 = group.hasJ1939;
-      group.includeOthers = group.hasOthers;
-    }
-    syncPendingDbcExportCountsByBusSelection();
-  }
-
-  function toggleDbcExportGroupProtocol(busId, protocol, checked) {
-    const group = pendingDbcExport.busGroups.find((item) => item.busId === busId);
-    if (!group) return;
-    if (!group.requiresProtocolSelection) return;
-    if (protocol === 'j1939') {
-      group.includeJ1939 = checked && group.hasJ1939;
-    } else {
-      group.includeOthers = checked && group.hasOthers;
-    }
     syncPendingDbcExportCountsByBusSelection();
   }
 
@@ -101,24 +73,23 @@ export function useDbcExportSelection() {
 
   function openDbcExportForBusGroups(busGroups) {
     pendingDbcExport.busGroups = Array.isArray(busGroups) ? busGroups : [];
+    pendingDbcExport.originalNodes = [];
     pendingDbcExport.j1939Nodes = [];
     pendingDbcExport.otherNodes = [];
     dbcExportSelection.selectedBusIds = pendingDbcExport.busGroups.map((group) => group.busId);
-    dbcExportSelection.includeJ1939 = true;
-    dbcExportSelection.includeOthers = true;
     dbcExportSelection.j1939Mode = 'dedicated';
     syncPendingDbcExportCountsByBusSelection();
     dbcExportModalOpen.value = true;
   }
 
-  function openDbcExportForProtocolSplit(j1939Nodes, otherNodes) {
+  function openDbcExportForProtocolSplit(originalNodes, j1939Nodes, otherNodes) {
     pendingDbcExport.busGroups = [];
+    pendingDbcExport.originalNodes = Array.isArray(originalNodes) ? originalNodes : [];
     pendingDbcExport.j1939Nodes = Array.isArray(j1939Nodes) ? j1939Nodes : [];
     pendingDbcExport.otherNodes = Array.isArray(otherNodes) ? otherNodes : [];
+    pendingDbcExport.originalNodeCount = new Set(pendingDbcExport.originalNodes.map((n) => n.id)).size;
     pendingDbcExport.j1939Count = pendingDbcExport.j1939Nodes.length;
     pendingDbcExport.otherCount = pendingDbcExport.otherNodes.length;
-    dbcExportSelection.includeJ1939 = true;
-    dbcExportSelection.includeOthers = true;
     dbcExportSelection.j1939Mode = 'dedicated';
     dbcExportModalOpen.value = true;
   }
@@ -132,7 +103,6 @@ export function useDbcExportSelection() {
     closeDbcExportModal,
     syncPendingDbcExportCountsByBusSelection,
     toggleDbcExportBusSelection,
-    toggleDbcExportGroupProtocol,
     updateDbcExportGroupJ1939Mode,
     openDbcExportForBusGroups,
     openDbcExportForProtocolSplit,

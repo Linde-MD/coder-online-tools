@@ -193,7 +193,7 @@ export function useCanArchApp({
     importTarget,
     importReviewState,
     pendingDbcExport: ref({ mode: 'idle', busGroups: [], j1939Nodes: [], otherNodes: [] }),
-    dbcExportSelection: reactive({ includeJ1939: true, includeOthers: true, j1939Mode: 'dedicated' }),
+    dbcExportSelection: reactive({ j1939Mode: 'dedicated' }),
     pushHistorySnapshot,
     persistNodes,
     setStatus,

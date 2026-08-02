@@ -21,6 +21,24 @@ export function normalizeBusColor(value, fallback = BUS_COLOR_POOL[0]) {
   return trimmed || fallback;
 }
 
+export function cloneMessageWorkspaceSnapshot(workspace) {
+  if (!workspace || typeof workspace !== 'object') return {};
+  const cloned = {};
+  for (const busId of Object.keys(workspace)) {
+    const store = workspace[busId];
+    if (!store || typeof store !== 'object') continue;
+    cloned[busId] = {
+      rxMessages: Array.isArray(store.rxMessages)
+        ? store.rxMessages.map((msg) => (typeof msg?.toJSON === 'function' ? msg.toJSON() : { ...msg }))
+        : [],
+      txMessages: Array.isArray(store.txMessages)
+        ? store.txMessages.map((msg) => (typeof msg?.toJSON === 'function' ? msg.toJSON() : { ...msg }))
+        : [],
+    };
+  }
+  return cloned;
+}
+
 export function cloneNodesSnapshot(source) {
   return (Array.isArray(source) ? source : []).map((item) => ({
     ...item,
@@ -32,6 +50,7 @@ export function cloneNodesSnapshot(source) {
     j1939Addresses: Array.isArray(item?.j1939Addresses) ? [...item.j1939Addresses] : [],
     canopenNodeIds: Array.isArray(item?.canopenNodeIds) ? [...item.canopenNodeIds] : [],
     baseColor: normalizeNodeBaseColor(item?.baseColor),
+    messageWorkspace: cloneMessageWorkspaceSnapshot(item?.messageWorkspace),
   }));
 }
 
@@ -86,37 +105,54 @@ export function buildTopologySnapshot({ nodes, buses, links }) {
 export function hydrateNodes(rawNodes, { nextNodePosition } = {}) {
   const list = Array.isArray(rawNodes) ? rawNodes : [];
   return list
-    .map((item) => ({
-      id: String(item?.id || crypto.randomUUID()),
-      name: String(item?.name || '').trim() || 'ECU',
-      note: String(item?.note || ''),
-      position: {
-        x: Number.isFinite(Number(item?.position?.x))
-          ? Number(item.position.x)
-          : (nextNodePosition ? nextNodePosition().x : 20),
-        y: Number.isFinite(Number(item?.position?.y))
-          ? Number(item.position.y)
-          : (nextNodePosition ? nextNodePosition().y : 20),
-      },
-      protocols: Array.isArray(item?.protocols)
-        ? item.protocols.filter((token) => [
-            canProtocols.GENERIC_STD,
-            canProtocols.GENERIC_EXT,
-            canProtocols.J1939,
-            canProtocols.CANOPEN,
-          ].includes(token))
-        : [],
-      j1939Addresses: Array.isArray(item?.j1939Addresses)
-        ? item.j1939Addresses.map((num) => Number.parseInt(num, 10)).filter((num) => Number.isInteger(num))
-        : [],
-      canopenNodeIds: Array.isArray(item?.canopenNodeIds)
-        ? item.canopenNodeIds.map((num) => Number.parseInt(num, 10)).filter((num) => Number.isInteger(num))
-        : [],
-      baseColor: normalizeNodeBaseColor(item?.baseColor),
-      createdAt: String(item?.createdAt || nowIso()),
-      updatedAt: String(item?.updatedAt || nowIso()),
-      source: item?.source === 'dbc-import' ? 'dbc-import' : 'manual',
-    }))
+    .map((item) => {
+      const node = {
+        id: String(item?.id || crypto.randomUUID()),
+        name: String(item?.name || '').trim() || 'ECU',
+        note: String(item?.note || ''),
+        position: {
+          x: Number.isFinite(Number(item?.position?.x))
+            ? Number(item.position.x)
+            : (nextNodePosition ? nextNodePosition().x : 20),
+          y: Number.isFinite(Number(item?.position?.y))
+            ? Number(item.position.y)
+            : (nextNodePosition ? nextNodePosition().y : 20),
+        },
+        protocols: Array.isArray(item?.protocols)
+          ? item.protocols.filter((token) => [
+              canProtocols.GENERIC_STD,
+              canProtocols.GENERIC_EXT,
+              canProtocols.J1939,
+              canProtocols.CANOPEN,
+            ].includes(token))
+          : [],
+        j1939Addresses: Array.isArray(item?.j1939Addresses)
+          ? item.j1939Addresses.map((num) => Number.parseInt(num, 10)).filter((num) => Number.isInteger(num))
+          : [],
+        canopenNodeIds: Array.isArray(item?.canopenNodeIds)
+          ? item.canopenNodeIds.map((num) => Number.parseInt(num, 10)).filter((num) => Number.isInteger(num))
+          : [],
+        baseColor: normalizeNodeBaseColor(item?.baseColor),
+        createdAt: String(item?.createdAt || nowIso()),
+        updatedAt: String(item?.updatedAt || nowIso()),
+        source: item?.source === 'dbc-import' ? 'dbc-import' : 'manual',
+      };
+
+      if (item?.messageWorkspace && typeof item.messageWorkspace === 'object') {
+        const workspace = {};
+        for (const busId of Object.keys(item.messageWorkspace)) {
+          const store = item.messageWorkspace[busId];
+          if (!store || typeof store !== 'object') continue;
+          workspace[busId] = {
+            rxMessages: Array.isArray(store.rxMessages) ? store.rxMessages.map((msg) => ({ ...msg })) : [],
+            txMessages: Array.isArray(store.txMessages) ? store.txMessages.map((msg) => ({ ...msg })) : [],
+          };
+        }
+        node.messageWorkspace = workspace;
+      }
+
+      return node;
+    })
     .filter((item) => Boolean(item.id));
 }
 

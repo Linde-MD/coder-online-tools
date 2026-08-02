@@ -276,6 +276,20 @@ export function useImportExport({
       const exportNodes = buildExportNodeProjectionsForBus(busId);
       if (exportNodes.length === 0) continue;
       const { j1939Nodes, otherNodes } = splitExportNodesByProtocol(exportNodes);
+
+      const messagesByNode = {};
+      for (const node of exportNodes) {
+        const workspace = node?.messageWorkspace;
+        if (!workspace || typeof workspace !== 'object') continue;
+        const store = workspace[busId];
+        if (!store || typeof store !== 'object') continue;
+        const rxMessages = Array.isArray(store.rxMessages) ? store.rxMessages : [];
+        const txMessages = Array.isArray(store.txMessages) ? store.txMessages : [];
+        if (rxMessages.length > 0 || txMessages.length > 0) {
+          messagesByNode[node.id] = { rxMessages, txMessages };
+        }
+      }
+
       groups.push({
         busId,
         busName: bus.name,
@@ -289,78 +303,62 @@ export function useImportExport({
         hasOthers: otherNodes.length > 0,
         requiresProtocolSelection: j1939Nodes.length > 0 && otherNodes.length > 0,
         selected: true,
-        includeJ1939: j1939Nodes.length > 0,
-        includeOthers: otherNodes.length > 0,
         j1939Mode: 'dedicated',
+        messagesByNode,
       });
     }
     return groups;
   }
 
-  function executeDbcExport(j1939Nodes, otherNodes, options = {}) {
-    const includeJ1939 = options.includeJ1939 !== false;
-    const includeOthers = options.includeOthers !== false;
+  function executeDbcExport(nodes, options = {}) {
     const j1939Mode = options.j1939Mode === 'downgrade' ? 'downgrade' : 'dedicated';
     const silentStatus = options.silentStatus === true;
     const dateTag = options.dateTag || new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
     const filenameBase = options.filenameBase || `can-arch-nodes-${dateTag}`;
-    const canExportJ1939 = includeJ1939 && j1939Nodes.length > 0;
-    const canExportOthers = includeOthers && otherNodes.length > 0;
-    if (!canExportJ1939 && !canExportOthers) {
+
+    const safeNodes = Array.isArray(nodes) ? nodes : [];
+    if (safeNodes.length === 0) {
       if (!silentStatus) {
-        setStatus('请至少选择一种协议导出。', true);
+        setStatus('没有可导出的 ECU。', true);
       }
       return null;
     }
-    let exportedFiles = 0;
-    if (canExportJ1939 && j1939Mode === 'downgrade') {
-      const downgradedJ1939Nodes = downgradeJ1939NodesToStandard(j1939Nodes);
-      const mergedNodes = mergeStandardExportNodes(
-        canExportOthers ? otherNodes : [],
-        downgradedJ1939Nodes,
-      );
-      const dbc = serializeNodesToDbc(mergedNodes, { profile: 'standard' });
-      downloadTextFile(`${filenameBase}.dbc`, dbc);
-      exportedFiles = 1;
-      const mergedNodeCount = new Set(mergedNodes.map((item) => item.id)).size;
-      if (!silentStatus) {
-        setStatus(`已导出 1 个普通 DBC 文件（J1939 已退化），覆盖 ${mergedNodeCount} 个 ECU。`);
+
+    const exportNodes = safeNodes.map((node) => {
+      if (j1939Mode === 'downgrade') {
+        const protocols = normalizeProtocolsList(node.protocols);
+        const downgraded = protocols.map((p) =>
+          p === canProtocols.J1939 ? canProtocols.GENERIC_EXT : p
+        );
+        return {
+          ...node,
+          protocols: downgraded,
+          j1939Addresses: [],
+        };
       }
-      return {
-        exportedFiles,
-        exportedNodeIds: [...new Set(mergedNodes.map((item) => item.id))],
-      };
-    }
-    const hasBothDedicated = canExportJ1939 && canExportOthers;
-    if (canExportJ1939) {
-      const dbc = serializeNodesToDbc(j1939Nodes, { profile: 'j1939' });
-      const filename = hasBothDedicated
-        ? `${filenameBase}-j1939.dbc`
-        : `${filenameBase}.dbc`;
-      downloadTextFile(filename, dbc);
-      exportedFiles += 1;
-    }
-    if (canExportOthers) {
-      const dbc = serializeNodesToDbc(otherNodes, { profile: 'standard' });
-      const filename = hasBothDedicated
-        ? `${filenameBase}-other.dbc`
-        : `${filenameBase}.dbc`;
-      downloadTextFile(filename, dbc);
-      exportedFiles += 1;
-    }
-    const exportedNodes = new Set([
-      ...j1939Nodes.map((item) => item.id),
-      ...otherNodes.map((item) => item.id),
-    ]).size;
+      return node;
+    });
+
+    const dbc = serializeNodesToDbc(exportNodes, { profile: 'standard', messagesByNode: options.messagesByNode });
+    downloadTextFile(`${filenameBase}.dbc`, dbc);
+
+    const uniqueNodeIds = new Set(exportNodes.map((item) => item.id));
     if (!silentStatus) {
-      setStatus(`已导出 ${exportedFiles} 个 DBC 文件，覆盖 ${exportedNodes} 个 ECU。`);
+      const msgCount = options.messagesByNode
+        ? Object.values(options.messagesByNode).reduce((sum, store) => {
+            const rx = Array.isArray(store?.rxMessages) ? store.rxMessages.length : 0;
+            const tx = Array.isArray(store?.txMessages) ? store.txMessages.length : 0;
+            return sum + rx + tx;
+          }, 0)
+        : 0;
+      const modeDesc = j1939Mode === 'downgrade' ? '（J1939 已降级为标准扩展帧）' : '';
+      const msgDesc = msgCount > 0 ? `，${msgCount} 条报文` : '';
+      setStatus(`已导出 1 个 DBC 文件${modeDesc}，覆盖 ${uniqueNodeIds.size} 个 ECU${msgDesc}。`);
     }
+
     return {
-      exportedFiles,
-      exportedNodeIds: [...new Set([
-        ...j1939Nodes.map((item) => item.id),
-        ...otherNodes.map((item) => item.id),
-      ])],
+      exportedFiles: 1,
+      exportedNodeIds: [...uniqueNodeIds],
     };
   }
 
@@ -376,12 +374,14 @@ export function useImportExport({
     setStatus('已打开 CAN BUS 分组 DBC 导出。');
   }
 
-  function openDbcExportForProtocolSplit(j1939Nodes, otherNodes) {
+  function openDbcExportForProtocolSplit(originalNodes, j1939Nodes, otherNodes, messagesByNode) {
     pendingDbcExport.value = {
       mode: 'protocol-split',
       busGroups: [],
+      originalNodes,
       j1939Nodes,
       otherNodes,
+      messagesByNode: messagesByNode || {},
     };
     importModalOpen.value = false;
     importStage.value = 'choose';
@@ -391,6 +391,7 @@ export function useImportExport({
     pendingDbcExport.value = {
       mode: 'idle',
       busGroups: [],
+      originalNodes: [],
       j1939Nodes: [],
       otherNodes: [],
     };
@@ -403,24 +404,17 @@ export function useImportExport({
         setStatus('请至少勾选一个 CAN BUS 导出。', true);
         return;
       }
-      const invalidGroup = selectedGroups.find((group) => !group.includeJ1939 && !group.includeOthers);
-      if (invalidGroup) {
-        setStatus(`CAN BUS ${invalidGroup.busName} 未选择导出协议，请先选择协议或取消该 BUS。`, true);
-        return;
-      }
       const dateTag = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
       let exportedFiles = 0;
       const exportedNodeIds = new Set();
       for (const group of selectedGroups) {
-        if (!group.includeJ1939 && !group.includeOthers) continue;
         const filenameBase = `can-arch-${sanitizeFilenamePart(group.busName)}-${dateTag}`;
-        const result = executeDbcExport(group.j1939Nodes, group.otherNodes, {
-          includeJ1939: group.includeJ1939,
-          includeOthers: group.includeOthers,
+        const result = executeDbcExport(group.exportNodes, {
           j1939Mode: group.j1939Mode,
           silentStatus: true,
           filenameBase,
           dateTag,
+          messagesByNode: group.messagesByNode,
         });
         if (!result) continue;
         exportedFiles += result.exportedFiles;
@@ -437,12 +431,10 @@ export function useImportExport({
       return;
     }
     const result = executeDbcExport(
-      pendingDbcExport.value.j1939Nodes,
-      pendingDbcExport.value.otherNodes,
+      pendingDbcExport.value.originalNodes,
       {
-        includeJ1939: dbcExportSelection.value.includeJ1939,
-        includeOthers: dbcExportSelection.value.includeOthers,
         j1939Mode: dbcExportSelection.value.j1939Mode,
+        messagesByNode: pendingDbcExport.value.messagesByNode,
       }
     );
     if (!result) return;
@@ -458,9 +450,13 @@ export function useImportExport({
     if (busGroups.length === 1) {
       const [group] = busGroups;
       if (group.hasJ1939) {
-        openDbcExportForBusGroups(busGroups);
+        openDbcExportForProtocolSplit(group.exportNodes, group.j1939Nodes, group.otherNodes);
         return;
       }
+      executeDbcExport(group.exportNodes, {
+        j1939Mode: 'dedicated',
+      });
+      return;
     }
     const exportNodes = buildExportNodeProjections();
     if (exportNodes.length === 0) {
@@ -468,13 +464,11 @@ export function useImportExport({
       return;
     }
     const { j1939Nodes, otherNodes } = splitExportNodesByProtocol(exportNodes);
-    if (j1939Nodes.length > 0 && otherNodes.length > 0) {
-      openDbcExportForProtocolSplit(j1939Nodes, otherNodes);
+    if (j1939Nodes.length > 0) {
+      openDbcExportForProtocolSplit(exportNodes, j1939Nodes, otherNodes);
       return;
     }
-    executeDbcExport(j1939Nodes, otherNodes, {
-      includeJ1939: true,
-      includeOthers: true,
+    executeDbcExport(exportNodes, {
       j1939Mode: 'dedicated',
     });
   }

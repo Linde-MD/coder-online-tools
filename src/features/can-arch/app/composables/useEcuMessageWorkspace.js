@@ -12,6 +12,58 @@ function cacheKey(ecu, bus) {
   return `${ecu}__${bus}`;
 }
 
+const filterStateCache = new Map();
+const preSnapshot = new Map();
+
+export function detectMessageErrors(rxMessages, txMessages) {
+  const errors = new Map();
+  const allMessages = [...rxMessages, ...txMessages];
+
+  const nameMap = new Map();
+  for (const msg of allMessages) {
+    const name = (msg.name || '').trim();
+    if (!name) continue;
+    if (!nameMap.has(name)) {
+      nameMap.set(name, []);
+    }
+    nameMap.get(name).push(msg.id);
+  }
+  for (const [, ids] of nameMap) {
+    if (ids.length > 1) {
+      for (const id of ids) {
+        const existing = errors.get(id) || { types: [], messages: [] };
+        existing.types.push('duplicate_name');
+        const dupName = allMessages.find((m) => m.id === id)?.name || '';
+        existing.messages.push(`报文名称 "${dupName}" 重复`);
+        errors.set(id, existing);
+      }
+    }
+  }
+
+  const idHexMap = new Map();
+  for (const msg of allMessages) {
+    const idHex = (msg.idHex || '').trim();
+    if (!idHex) continue;
+    if (!idHexMap.has(idHex)) {
+      idHexMap.set(idHex, []);
+    }
+    idHexMap.get(idHex).push(msg.id);
+  }
+  for (const [, ids] of idHexMap) {
+    if (ids.length > 1) {
+      for (const id of ids) {
+        const existing = errors.get(id) || { types: [], messages: [] };
+        existing.types.push('duplicate_id');
+        const dupIdHex = allMessages.find((m) => m.id === id)?.idHex || '';
+        existing.messages.push(`报文 ID "${dupIdHex}" 重复`);
+        errors.set(id, existing);
+      }
+    }
+  }
+
+  return errors;
+}
+
 export function useEcuMessageWorkspace({ ecuRef, busTabsRef }) {
   const protocolOptions = Object.freeze([
     { value: 'generic_std', label: 'Generic(Std)' },
@@ -41,9 +93,6 @@ export function useEcuMessageWorkspace({ ecuRef, busTabsRef }) {
     capturedOldBusId: '',
     scheduled: false,
   };
-
-  const filterStateCache = new Map();
-  const preSnapshot = new Map();
 
   function captureCurrentFilters() {
     return {
@@ -170,8 +219,16 @@ export function useEcuMessageWorkspace({ ecuRef, busTabsRef }) {
         activeBusId.value = '';
         return;
       }
-      if (!tabs.some((tab) => tab.busId === activeBusId.value)) {
+      const needsInit = !tabs.some((tab) => tab.busId === activeBusId.value);
+      if (needsInit) {
         activeBusId.value = tabs[0].busId;
+      }
+      if (needsInit && ecuId.value) {
+        nextTick(() => {
+          if (!switchState.ecuChanged && !switchState.busChanged) {
+            applyPeerSelectionForBus();
+          }
+        });
       }
     },
     { immediate: true }
@@ -266,6 +323,8 @@ export function useEcuMessageWorkspace({ ecuRef, busTabsRef }) {
       return peerOk && protocolOk;
     })
   );
+
+  const messageErrors = computed(() => detectMessageErrors(rxMessages.value, txMessages.value));
 
   function flattenRows(messages, pane) {
     const rows = [];
@@ -378,5 +437,6 @@ export function useEcuMessageWorkspace({ ecuRef, busTabsRef }) {
     clearPeerFilters,
     selectAllProtocolFilters,
     clearProtocolFilters,
+    messageErrors,
   };
 }

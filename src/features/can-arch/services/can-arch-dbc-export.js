@@ -83,77 +83,48 @@ export function mergeStandardExportNodes(baseNodes, addonNodes) {
 }
 
 export function executeDbcExport({
-  j1939Nodes,
-  otherNodes,
-  includeJ1939 = true,
-  includeOthers = true,
+  nodes,
   j1939Mode = 'dedicated',
   silentStatus = false,
   filenameBase,
   status,
 }) {
-  const canExportJ1939 = includeJ1939 && j1939Nodes.length > 0;
-  const canExportOthers = includeOthers && otherNodes.length > 0;
-  if (!canExportJ1939 && !canExportOthers) {
+  const safeNodes = Array.isArray(nodes) ? nodes : [];
+
+  if (safeNodes.length === 0) {
     if (!silentStatus && status) {
-      status('请至少选择一种协议导出。', true);
+      status('没有可导出的 ECU。', true);
     }
     return null;
   }
 
-  let exportedFiles = 0;
-
-  if (canExportJ1939 && j1939Mode === 'downgrade') {
-    const downgradedJ1939Nodes = downgradeJ1939NodesToStandard(j1939Nodes);
-    const mergedNodes = mergeStandardExportNodes(
-      canExportOthers ? otherNodes : [],
-      downgradedJ1939Nodes,
-    );
-    const dbc = serializeNodesToDbc(mergedNodes, { profile: 'standard' });
-    downloadTextFile(`${filenameBase}.dbc`, dbc);
-    exportedFiles = 1;
-    const mergedNodeCount = new Set(mergedNodes.map((item) => item.id)).size;
-    if (!silentStatus && status) {
-      status(`已导出 1 个普通 DBC 文件（J1939 已退化），覆盖 ${mergedNodeCount} 个 ECU。`);
+  const exportNodes = safeNodes.map((node) => {
+    if (j1939Mode === 'downgrade') {
+      const protocols = normalizeProtocolsList(node.protocols);
+      const downgraded = protocols.map((p) =>
+        p === canProtocols.J1939 ? canProtocols.GENERIC_EXT : p
+      );
+      return {
+        ...node,
+        protocols: downgraded,
+        j1939Addresses: [],
+      };
     }
-    return {
-      exportedFiles,
-      exportedNodeIds: [...new Set(mergedNodes.map((item) => item.id))],
-    };
-  }
+    return node;
+  });
 
-  const hasBothDedicated = canExportJ1939 && canExportOthers;
-  if (canExportJ1939) {
-    const dbc = serializeNodesToDbc(j1939Nodes, { profile: 'j1939' });
-    const filename = hasBothDedicated
-      ? `${filenameBase}-j1939.dbc`
-      : `${filenameBase}.dbc`;
-    downloadTextFile(filename, dbc);
-    exportedFiles += 1;
-  }
+  const dbc = serializeNodesToDbc(exportNodes, { profile: 'standard' });
+  downloadTextFile(`${filenameBase}.dbc`, dbc);
 
-  if (canExportOthers) {
-    const dbc = serializeNodesToDbc(otherNodes, { profile: 'standard' });
-    const filename = hasBothDedicated
-      ? `${filenameBase}-other.dbc`
-      : `${filenameBase}.dbc`;
-    downloadTextFile(filename, dbc);
-    exportedFiles += 1;
-  }
-
-  const exportedNodes = new Set([
-    ...j1939Nodes.map((item) => item.id),
-    ...otherNodes.map((item) => item.id),
-  ]).size;
+  const uniqueNodeIds = new Set(exportNodes.map((item) => item.id));
   if (!silentStatus && status) {
-    status(`已导出 ${exportedFiles} 个 DBC 文件，覆盖 ${exportedNodes} 个 ECU。`);
+    const modeDesc = j1939Mode === 'downgrade' ? '（J1939 已降级为标准扩展帧）' : '';
+    status(`已导出 1 个 DBC 文件${modeDesc}，覆盖 ${uniqueNodeIds.size} 个 ECU。`);
   }
+
   return {
-    exportedFiles,
-    exportedNodeIds: [...new Set([
-      ...j1939Nodes.map((item) => item.id),
-      ...otherNodes.map((item) => item.id),
-    ])],
+    exportedFiles: 1,
+    exportedNodeIds: [...uniqueNodeIds],
   };
 }
 
@@ -247,8 +218,6 @@ export function buildDbcBusGroups({
       hasOthers: otherNodes.length > 0,
       requiresProtocolSelection: j1939Nodes.length > 0 && otherNodes.length > 0,
       selected: true,
-      includeJ1939: j1939Nodes.length > 0,
-      includeOthers: otherNodes.length > 0,
       j1939Mode: 'dedicated',
     });
   }
