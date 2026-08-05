@@ -27,7 +27,11 @@ export class CanMessage {
     this.layoutMode = data.layoutMode ?? 'compact';
     this.comment = data.comment ?? '';
     this.senders = Array.isArray(data.senders) ? [...data.senders] : (ecuId ? [ecuId] : []);
+    this.receiverMode = data.receiverMode === 'broadcast' ? 'broadcast' : 'nodes';
     this.receivers = Array.isArray(data.receivers) ? [...data.receivers] : [...peers];
+    if (this.receiverMode === 'broadcast') {
+      this.receivers = [];
+    }
     this.signals = (Array.isArray(data.signals) ? data.signals : []).map((s) =>
       s instanceof CanSignal ? s : new CanSignal(s)
     );
@@ -112,6 +116,7 @@ export class CanMessage {
       layoutMode: this.layoutMode,
       comment: this.comment,
       senders: [...this.senders],
+      receiverMode: this.receiverMode,
       receivers: [...this.receivers],
       signals: this.signals.map((s) => s.toJSON()),
       j1939: { ...this.j1939 },

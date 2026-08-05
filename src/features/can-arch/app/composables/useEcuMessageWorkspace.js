@@ -142,14 +142,30 @@ export function detectMessageErrors(rxMessages, txMessages) {
 
   for (const message of allMessages) {
     if (!message?.id) continue;
-    const layoutErrors = collectMessageLayoutErrors(message);
-    if (layoutErrors.length === 0) continue;
+    const senders = Array.isArray(message.senders) ? message.senders : [];
+    const receivers = Array.isArray(message.receivers) ? message.receivers : [];
+    const isReceiverBroadcast = message.receiverMode === 'broadcast';
     const existing = errors.get(message.id) || { types: [], messages: [] };
+
+    if (senders.length === 0) {
+      existing.types.push('missing_sender');
+      existing.messages.push('未配置发送方节点。');
+    }
+
+    if (!isReceiverBroadcast && receivers.length === 0) {
+      existing.types.push('missing_receiver');
+      existing.messages.push('未配置接收方节点。');
+    }
+
+    const layoutErrors = collectMessageLayoutErrors(message);
     for (const errText of layoutErrors) {
       existing.types.push('layout_error');
       existing.messages.push(errText);
     }
-    errors.set(message.id, existing);
+
+    if (existing.types.length > 0) {
+      errors.set(message.id, existing);
+    }
   }
 
   return errors;

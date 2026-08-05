@@ -305,14 +305,142 @@
             </div>
 
             <label>发送方</label>
-            <select v-model="selectedEntity.entity.senders" class="form-select form-select-sm" multiple>
-              <option v-for="opt in participantOptions" :key="`snd-${opt.id}`" :value="opt.id">{{ opt.name }}</option>
-            </select>
+            <div class="ecu-participant-list">
+              <div
+                v-for="participantId in selectedMessageSenders"
+                :key="`snd-item-${participantId}`"
+                class="ecu-participant-item"
+                :class="{ 'is-default': isDefaultSender(participantId) }"
+                @contextmenu.prevent.stop="openSenderDefaultMenu($event, participantId)"
+                :title="isDefaultSender(participantId) ? '默认发送方' : '右键设为默认发送方'"
+              >
+                <span class="ecu-participant-name">{{ resolveParticipantName(participantId) }}</span>
+                <span v-if="isDefaultSender(participantId)" class="ecu-participant-default-tag">默认</span>
+                <button
+                  type="button"
+                  class="ecu-participant-icon-btn danger"
+                  title="删除发送方"
+                  aria-label="删除发送方"
+                  @click="removeMessageParticipant('senders', participantId)"
+                >
+                  <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="M6 1h4l1 1h3v2H2V2h3l1-1Zm-2 4h8l-.6 9.2A1 1 0 0 1 10.4 15H5.6a1 1 0 0 1-1-.8L4 5Zm2 2v6h1.5V7H6Zm2.5 0v6H10V7H8.5Z" />
+                  </svg>
+                </button>
+              </div>
+              <div v-if="selectedMessageSenders.length === 0" class="ecu-participant-empty">暂无发送方</div>
+              <button
+                type="button"
+                class="ecu-participant-add-btn"
+                title="新增发送方"
+                aria-label="新增发送方"
+                :disabled="!canAddMessageParticipant('senders')"
+                @click="openParticipantPicker('senders')"
+              >
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="M7 2h2v5h5v2H9v5H7V9H2V7h5V2Z" />
+                </svg>
+              </button>
+              <div v-if="senderPickerOpen" class="ecu-participant-picker">
+                <div class="ecu-participant-picker-list">
+                  <label
+                    v-for="opt in getAvailableParticipantOptions('senders')"
+                    :key="`snd-pick-${opt.id}`"
+                    class="ecu-participant-picker-option"
+                  >
+                    <input v-model="senderPickerSelection" class="form-check-input" type="checkbox" :value="opt.id">
+                    <span>{{ opt.name }}</span>
+                  </label>
+                </div>
+                <div class="ecu-participant-picker-actions">
+                  <button type="button" class="btn btn-outline-secondary btn-sm" @click="closeParticipantPicker('senders')">取消</button>
+                  <button
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    :disabled="senderPickerSelection.length === 0"
+                    @click="confirmParticipantPicker('senders')"
+                  >
+                    添加
+                  </button>
+                </div>
+              </div>
+            </div>
 
             <label>接收方</label>
-            <select v-model="selectedEntity.entity.receivers" class="form-select form-select-sm" multiple>
-              <option v-for="opt in participantOptions" :key="`rcv-${opt.id}`" :value="opt.id">{{ opt.name }}</option>
-            </select>
+            <div class="ecu-participant-list">
+              <div v-if="selectedMessageIsBroadcast" class="ecu-participant-item is-broadcast" title="广播报文将导出为 Vector__XXX">
+                <span class="ecu-participant-name">广播（Vector__XXX）</span>
+                <button
+                  type="button"
+                  class="ecu-participant-icon-btn danger"
+                  title="取消广播"
+                  aria-label="取消广播"
+                  @click="disableBroadcastReceivers"
+                >
+                  <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="M6 1h4l1 1h3v2H2V2h3l1-1Zm-2 4h8l-.6 9.2A1 1 0 0 1 10.4 15H5.6a1 1 0 0 1-1-.8L4 5Zm2 2v6h1.5V7H6Zm2.5 0v6H10V7H8.5Z" />
+                  </svg>
+                </button>
+              </div>
+              <div
+                v-for="participantId in selectedMessageReceivers"
+                :key="`rcv-item-${participantId}`"
+                class="ecu-participant-item"
+              >
+                <span class="ecu-participant-name">{{ resolveParticipantName(participantId) }}</span>
+                <button
+                  type="button"
+                  class="ecu-participant-icon-btn danger"
+                  title="删除接收方"
+                  aria-label="删除接收方"
+                  @click="removeMessageParticipant('receivers', participantId)"
+                >
+                  <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="M6 1h4l1 1h3v2H2V2h3l1-1Zm-2 4h8l-.6 9.2A1 1 0 0 1 10.4 15H5.6a1 1 0 0 1-1-.8L4 5Zm2 2v6h1.5V7H6Zm2.5 0v6H10V7H8.5Z" />
+                  </svg>
+                </button>
+              </div>
+              <div v-if="selectedMessageReceivers.length === 0 && !selectedMessageIsBroadcast" class="ecu-participant-empty">暂无接收方</div>
+              <button
+                type="button"
+                class="ecu-participant-add-btn"
+                title="新增接收方"
+                aria-label="新增接收方"
+                :disabled="!canAddMessageParticipant('receivers')"
+                @click="openParticipantPicker('receivers')"
+              >
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="M7 2h2v5h5v2H9v5H7V9H2V7h5V2Z" />
+                </svg>
+              </button>
+              <div v-if="receiverPickerOpen" class="ecu-participant-picker">
+                <label class="ecu-participant-picker-option ecu-participant-picker-broadcast">
+                  <input v-model="receiverPickerBroadcast" class="form-check-input" type="checkbox">
+                  <span>广播（无需接收节点，导出为 Vector__XXX）</span>
+                </label>
+                <div class="ecu-participant-picker-list">
+                  <label
+                    v-for="opt in getAvailableParticipantOptions('receivers')"
+                    :key="`rcv-pick-${opt.id}`"
+                    class="ecu-participant-picker-option"
+                  >
+                    <input v-model="receiverPickerSelection" class="form-check-input" type="checkbox" :value="opt.id">
+                    <span>{{ opt.name }}</span>
+                  </label>
+                </div>
+                <div class="ecu-participant-picker-actions">
+                  <button type="button" class="btn btn-outline-secondary btn-sm" @click="closeParticipantPicker('receivers')">取消</button>
+                  <button
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    :disabled="!canConfirmReceiverPicker"
+                    @click="confirmParticipantPicker('receivers')"
+                  >
+                    添加
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
           <label class="form-check-label d-flex align-items-center gap-2 mt-2 mb-1">
@@ -449,6 +577,15 @@
         <button v-if="contextMenu.target === 'message'" class="ecu-msg-context-item" type="button" @click="addSignalToContextMessage">在此 Message 下新增 Signal</button>
         <button v-if="contextMenu.target !== 'pane'" class="ecu-msg-context-item" type="button" @click="copySelection">复制</button>
         <button v-if="contextMenu.target !== 'pane'" class="ecu-msg-context-item danger" type="button" @click="deleteSelection">删除</button>
+      </div>
+
+      <div
+        v-if="senderDefaultMenu.open"
+        class="ecu-msg-context"
+        :style="{ left: `${senderDefaultMenu.x}px`, top: `${senderDefaultMenu.y}px` }"
+        @click.stop
+      >
+        <button class="ecu-msg-context-item" type="button" @click="applyDefaultSenderFromMenu">设为默认发送方</button>
       </div>
     </div>
   </div>
@@ -646,6 +783,17 @@ const propsPanelDrag = ref(null);
 const bitGridBodyRef = ref(null);
 const signalDragState = ref(null);
 const signalLayoutModalOpen = ref(false);
+const senderPickerOpen = ref(false);
+const receiverPickerOpen = ref(false);
+const senderPickerSelection = ref([]);
+const receiverPickerSelection = ref([]);
+const receiverPickerBroadcast = ref(false);
+const senderDefaultMenu = ref({
+  open: false,
+  x: 0,
+  y: 0,
+  participantId: '',
+});
 
 const BIT_GRID_CELL_WIDTH = 28;
 const BIT_GRID_ROW_HEIGHT = 30;
@@ -723,6 +871,26 @@ const selectedMessageDlcHint = computed(() => {
     return '不定长度：这里填写理论最大字节数，导出与容量评估将按该上限处理。';
   }
   return '固定长度：报文按该字节数发送与解析。';
+});
+
+const selectedMessageSenders = computed(() => {
+  const msg = selectedMessageEntity.value;
+  if (!msg || !Array.isArray(msg.senders)) return [];
+  return msg.senders;
+});
+
+const selectedMessageReceivers = computed(() => {
+  const msg = selectedMessageEntity.value;
+  if (!msg || !Array.isArray(msg.receivers)) return [];
+  return msg.receivers;
+});
+
+const selectedMessageIsBroadcast = computed(() => {
+  return selectedMessageEntity.value?.receiverMode === 'broadcast';
+});
+
+const canConfirmReceiverPicker = computed(() => {
+  return receiverPickerBroadcast.value || receiverPickerSelection.value.length > 0;
 });
 
 const selectedMessageByteOrder = computed(() => {
@@ -1019,6 +1187,140 @@ function onMessageDlcBlur(message) {
   normalizeMessageSignalLayout(message);
 }
 
+function resolveParticipantName(participantId) {
+  const matched = participantOptions.value.find((item) => item.id === participantId);
+  return matched?.name || participantId;
+}
+
+function ensureMessageParticipantList(message, key) {
+  if (!message) return [];
+  if (!Array.isArray(message[key])) {
+    message[key] = [];
+  }
+  return message[key];
+}
+
+function ensureMessageReceiverMode(message) {
+  if (!message) return;
+  message.receiverMode = message.receiverMode === 'broadcast' ? 'broadcast' : 'nodes';
+  if (message.receiverMode === 'broadcast') {
+    message.receivers = [];
+  }
+}
+
+function getAvailableParticipantOptions(key) {
+  const message = selectedMessageEntity.value;
+  if (!message) return [];
+  const list = ensureMessageParticipantList(message, key);
+  return participantOptions.value.filter((item) => !list.includes(item.id));
+}
+
+function canAddMessageParticipant(key) {
+  if (key === 'receivers') {
+    return !!selectedMessageEntity.value;
+  }
+  return getAvailableParticipantOptions(key).length > 0;
+}
+
+function openParticipantPicker(key) {
+  if (!canAddMessageParticipant(key)) return;
+  senderPickerOpen.value = key === 'senders';
+  receiverPickerOpen.value = key === 'receivers';
+  if (key === 'senders') {
+    senderPickerSelection.value = [];
+  } else {
+    receiverPickerSelection.value = [];
+    receiverPickerBroadcast.value = selectedMessageIsBroadcast.value;
+  }
+}
+
+function closeParticipantPicker(key) {
+  if (key === 'senders') {
+    senderPickerOpen.value = false;
+    senderPickerSelection.value = [];
+    return;
+  }
+  receiverPickerOpen.value = false;
+  receiverPickerSelection.value = [];
+  receiverPickerBroadcast.value = false;
+}
+
+function confirmParticipantPicker(key) {
+  const message = selectedMessageEntity.value;
+  if (!message) return;
+  if (key === 'receivers' && receiverPickerBroadcast.value) {
+    message.receiverMode = 'broadcast';
+    message.receivers = [];
+    closeParticipantPicker(key);
+    return;
+  }
+
+  const list = ensureMessageParticipantList(message, key);
+  const picked = key === 'senders' ? senderPickerSelection.value : receiverPickerSelection.value;
+  const merged = [...list];
+  for (const id of picked) {
+    if (!merged.includes(id)) {
+      merged.push(id);
+    }
+  }
+  message[key] = merged;
+  if (key === 'receivers') {
+    message.receiverMode = 'nodes';
+  }
+  closeParticipantPicker(key);
+}
+
+function removeMessageParticipant(key, participantId) {
+  const message = selectedMessageEntity.value;
+  if (!message) return;
+  const list = ensureMessageParticipantList(message, key);
+  const next = list.filter((id) => id !== participantId);
+  message[key] = next;
+  if (key === 'receivers') {
+    message.receiverMode = 'nodes';
+  }
+}
+
+function disableBroadcastReceivers() {
+  const message = selectedMessageEntity.value;
+  if (!message) return;
+  message.receiverMode = 'nodes';
+}
+
+function isDefaultSender(participantId) {
+  return selectedMessageSenders.value[0] === participantId;
+}
+
+function setDefaultSender(participantId) {
+  const message = selectedMessageEntity.value;
+  if (!message) return;
+  const list = ensureMessageParticipantList(message, 'senders');
+  if (!list.includes(participantId)) return;
+  if (list[0] === participantId) return;
+  message.senders = [participantId, ...list.filter((id) => id !== participantId)];
+}
+
+function openSenderDefaultMenu(event, participantId) {
+  if (!participantId) return;
+  closeContextMenu();
+  senderDefaultMenu.value = {
+    open: true,
+    x: event.clientX,
+    y: event.clientY,
+    participantId,
+  };
+}
+
+function closeSenderDefaultMenu() {
+  senderDefaultMenu.value.open = false;
+}
+
+function applyDefaultSenderFromMenu() {
+  const participantId = senderDefaultMenu.value.participantId;
+  setDefaultSender(participantId);
+  closeSenderDefaultMenu();
+}
+
 function resolveBitIndexFromPointer(event) {
   const gridBody = bitGridBodyRef.value;
   if (!gridBody) return null;
@@ -1098,8 +1400,15 @@ function onSignalDragEnd(event) {
 }
 
 watch(selectedMessageEntity, (message) => {
+  closeSenderDefaultMenu();
+  senderPickerOpen.value = false;
+  receiverPickerOpen.value = false;
+  senderPickerSelection.value = [];
+  receiverPickerSelection.value = [];
+  receiverPickerBroadcast.value = false;
   if (!message) return;
   ensureMessageDlcMode(message);
+  ensureMessageReceiverMode(message);
   normalizeMessageDlc(message);
   normalizeMessageSignalLayout(message);
   clampMessageIdByProtocol(message);
@@ -1312,6 +1621,7 @@ function handleWindowKeydown(event) {
 function handleWindowPointerDown(event) {
   if (event.target?.closest?.('.ecu-msg-context')) return;
   closeContextMenu();
+  closeSenderDefaultMenu();
 }
 
 onMounted(() => {
@@ -1936,6 +2246,142 @@ defineExpose({
   color: #fff;
   font-size: 10px;
   line-height: 1.6;
+}
+
+.ecu-participant-list {
+  border: 1px solid #dccab9;
+  border-radius: 8px;
+  background: #fff;
+  min-height: 32px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ecu-participant-item {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: #f7f1ea;
+}
+
+.ecu-participant-item.is-default {
+  background: #efe2d2;
+  box-shadow: inset 0 0 0 1px #d6b896;
+}
+
+.ecu-participant-item.is-broadcast {
+  background: #e8f4ff;
+  box-shadow: inset 0 0 0 1px #a9cae8;
+}
+
+.ecu-participant-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #4e3a2a;
+  font-size: 12px;
+}
+
+.ecu-participant-default-tag {
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 1;
+  color: #7e5a31;
+  border: 1px solid #d5b189;
+  border-radius: 999px;
+  padding: 2px 6px;
+  background: #fff8ef;
+}
+
+.ecu-participant-empty {
+  color: #9a856f;
+  font-size: 12px;
+  padding: 4px 6px;
+}
+
+.ecu-participant-icon-btn,
+.ecu-participant-add-btn {
+  width: 20px;
+  height: 20px;
+  border: 1px solid #d7c4b1;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  color: #7d6551;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.ecu-participant-icon-btn svg,
+.ecu-participant-add-btn svg {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
+}
+
+.ecu-participant-icon-btn:hover,
+.ecu-participant-add-btn:hover {
+  border-color: #bc9f87;
+  color: #604833;
+}
+
+.ecu-participant-icon-btn.danger {
+  color: #9d4f4f;
+}
+
+.ecu-participant-icon-btn.danger:hover {
+  border-color: #d48282;
+  color: #8a1f1f;
+}
+
+.ecu-participant-add-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ecu-participant-picker {
+  border-top: 1px dashed #d8c5b3;
+  padding-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ecu-participant-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 132px;
+  overflow: auto;
+}
+
+.ecu-participant-picker-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #4e3a2a;
+}
+
+.ecu-participant-picker-broadcast {
+  border-bottom: 1px dashed #d8c5b3;
+  padding-bottom: 4px;
+  margin-bottom: 2px;
+}
+
+.ecu-participant-picker-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .ecu-bit-layout-empty {

@@ -157,7 +157,54 @@ function dbcValueType(signed) {
   return signed ? '-' : '+';
 }
 
-function serializeMessagesToDbc(messages = [], senderToken, receiverTokens = []) {
+function resolveMessageSenderTokens(message, fallbackSenderToken, options = {}) {
+  const senderResolver = options?.senderResolver || {};
+  const allowedSenderTokens = new Set(Array.isArray(options?.allowedSenderTokens) ? options.allowedSenderTokens : []);
+  const rawSenders = Array.isArray(message?.senders) ? message.senders : [];
+  const mapped = rawSenders
+    .map((senderId) => senderResolver[senderId] || senderId)
+    .filter((token) => typeof token === 'string' && token.length > 0)
+    .filter((token) => allowedSenderTokens.size === 0 || allowedSenderTokens.has(token));
+  const uniqueMapped = [...new Set(mapped)];
+
+  const primary = uniqueMapped[0] || fallbackSenderToken || 'Vector__XXX';
+  const allSenders = [primary, ...uniqueMapped.filter((token) => token !== primary)];
+  return {
+    primary,
+    all: allSenders,
+  };
+}
+
+function isBroadcastReceiverToken(token) {
+  return /^Vector_+XXX$/i.test(String(token || '').trim());
+}
+
+function resolveMessageReceiverTokens(message, fallbackReceiverTokens = [], options = {}) {
+  if (message?.receiverMode === 'broadcast') {
+    return ['Vector__XXX'];
+  }
+
+  const receiverResolver = options?.receiverResolver || {};
+  const allowedReceiverTokens = new Set(Array.isArray(options?.allowedReceiverTokens) ? options.allowedReceiverTokens : []);
+  const rawReceivers = Array.isArray(message?.receivers) ? message.receivers : [];
+  const mapped = rawReceivers
+    .map((receiverId) => receiverResolver[receiverId] || receiverId)
+    .filter((token) => typeof token === 'string' && token.length > 0)
+    .filter((token) => allowedReceiverTokens.size === 0 || allowedReceiverTokens.has(token));
+
+  const uniqueMapped = [...new Set(mapped)];
+  if (uniqueMapped.length > 0) {
+    return uniqueMapped;
+  }
+
+  const safeFallback = Array.isArray(fallbackReceiverTokens) ? fallbackReceiverTokens : [];
+  if (safeFallback.length > 0) {
+    return safeFallback;
+  }
+  return ['Vector__XXX'];
+}
+
+function serializeMessagesToDbc(messages = [], senderToken, receiverTokens = [], options = {}) {
   const lines = [];
   const safeMessages = Array.isArray(messages) ? messages : [];
 
@@ -166,7 +213,9 @@ function serializeMessagesToDbc(messages = [], senderToken, receiverTokens = [])
     const canId = hexToDecimal(msg.idHex);
     const msgName = nodeNameToToken(msg.name || 'MSG');
     const dlc = Number.isInteger(msg.dlc) ? msg.dlc : 8;
-    const sender = senderToken || 'Vector__XXX';
+    const senderInfo = resolveMessageSenderTokens(msg, senderToken, options);
+    const sender = senderInfo.primary;
+    const resolvedReceivers = resolveMessageReceiverTokens(msg, receiverTokens, options);
     lines.push('');
     lines.push(`BO_ ${canId} ${msgName}: ${dlc} ${sender}`);
 
@@ -183,8 +232,12 @@ function serializeMessagesToDbc(messages = [], senderToken, receiverTokens = [])
       const min = sig.min ?? 0;
       const max = sig.max ?? ((1 << Math.min(length, 32)) - 1);
       const unit = String(sig.unit || '');
-      const receivers = receiverTokens.length > 0 ? receiverTokens.join(',') : 'Vector__XXX';
+      const receivers = resolvedReceivers.length > 0 ? resolvedReceivers.join(',') : 'Vector__XXX';
       lines.push(` SG_ ${sigName} : ${startBit}|${length}@${byteOrd}${valType} (${factor},${offset}) [${min}|${max}] "${unit}" ${receivers}`);
+    }
+
+    if (senderInfo.all.length > 1) {
+      lines.push(`BO_TX_BU_ ${canId} : ${senderInfo.all.join(',')};`);
     }
   }
 
@@ -282,9 +335,16 @@ export function serializeNodesToDbc(nodes = [], options = {}) {
       rxMessages = rxMessages.filter((msg) => msg && !errorIds.has(msg.id));
 
       const allTokenNames = tokenRecords.map((r) => r.token);
+      const senderResolver = tokenToName;
+      const senderOptions = {
+        senderResolver,
+        allowedSenderTokens: allTokenNames,
+        receiverResolver: tokenToName,
+        allowedReceiverTokens: allTokenNames,
+      };
 
       if (txMessages.length > 0) {
-        lines.push(...serializeMessagesToDbc(txMessages, record.token, allTokenNames));
+        lines.push(...serializeMessagesToDbc(txMessages, record.token, [], senderOptions));
       }
       if (rxMessages.length > 0) {
         const senderTokens = [];
@@ -298,7 +358,7 @@ export function serializeNodesToDbc(nodes = [], options = {}) {
           }
         }
         const rxSender = senderTokens.length > 0 ? senderTokens[0] : record.token;
-        lines.push(...serializeMessagesToDbc(rxMessages, rxSender, allTokenNames));
+        lines.push(...serializeMessagesToDbc(rxMessages, rxSender, [], senderOptions));
       }
     }
   }
@@ -433,8 +493,10 @@ export function parseDbcMessages(dbcText) {
 
   const messages = [];
   let currentMessage = null;
+  const messageByCanId = new Map();
 
   const boPattern = /^\s*BO_\s+(\d+)\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(\d+)\s+([A-Za-z_][A-Za-z0-9_]*)/;
+  const boTxPattern = /^\s*BO_TX_BU_\s+(\d+)\s*:\s*([^;]*?)\s*;\s*$/;
   const sgPattern = /^\s*SG_\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\s*:\s*(\d+)\|(\d+)@([01])([+-])\s*\(([^,]+),([^)]+)\)\s*\[([^|]+)\|([^\]]+)\]\s*"([^"]*)"\s*(.*))?/;
 
   for (const line of lines) {
@@ -453,6 +515,7 @@ export function parseDbcMessages(dbcText) {
         idHex: `0x${canId.toString(16).toUpperCase()}`,
         dlc: dlc,
         senders: tokenSet.has(sender) ? [sender] : [],
+        receiverMode: 'nodes',
         receivers: [],
         signals: [],
         protocol: 'generic_std',
@@ -466,6 +529,25 @@ export function parseDbcMessages(dbcText) {
         comment: '',
         j1939: { enabled: false, mode: 'id', id: '', pgn: '', priority: 6, sa: '', da: '' },
       };
+      messageByCanId.set(canId, currentMessage);
+      continue;
+    }
+
+    const boTxMatch = line.match(boTxPattern);
+    if (boTxMatch) {
+      const canId = parseInt(boTxMatch[1], 10);
+      const senderList = String(boTxMatch[2] || '')
+        .split(/\s*,\s*/)
+        .map((item) => item.trim())
+        .filter((item) => tokenSet.has(item));
+      const targetMessage = messageByCanId.get(canId);
+      if (targetMessage && senderList.length > 0) {
+        const boSender = Array.isArray(targetMessage.senders) && targetMessage.senders.length > 0
+          ? targetMessage.senders[0]
+          : null;
+        const merged = boSender ? [boSender, ...senderList] : senderList;
+        targetMessage.senders = [...new Set(merged)];
+      }
       continue;
     }
 
@@ -487,6 +569,15 @@ export function parseDbcMessages(dbcText) {
         const unit = sgMatch[10] || '';
         const receiversStr = (sgMatch[11] || '').trim();
         const receiverTokens = receiversStr.split(/\s*,\s*/).filter((t) => tokenSet.has(t));
+        const hasBroadcastReceiver = receiversStr
+          .split(/\s*,\s*/)
+          .some((token) => isBroadcastReceiverToken(token));
+        if (hasBroadcastReceiver && receiverTokens.length === 0 && currentMessage.receivers.length === 0) {
+          currentMessage.receiverMode = 'broadcast';
+        }
+        if (receiverTokens.length > 0) {
+          currentMessage.receiverMode = 'nodes';
+        }
         for (const rt of receiverTokens) {
           if (!currentMessage.receivers.includes(rt)) {
             currentMessage.receivers.push(rt);
