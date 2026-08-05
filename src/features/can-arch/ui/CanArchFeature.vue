@@ -904,7 +904,6 @@ import {
   validateCanNodeDraft,
 } from '@/features/can-arch/services/can-arch-dbc.js';
 import {
-  AUTO_SAVE_INTERVAL_MS,
   BUS_COLOR_POOL,
   BUS_RADIUS,
   CONFIG_SCHEMA,
@@ -1138,7 +1137,9 @@ let busDragState = null;
 let linkDraftState = null;
 let linkAnchorDragState = null;
 let deleteKeyBound = false;
-let autoSaveTimerId = null;
+let persistThrottleTimerId = null;
+let persistPending = false;
+let lastPersistAt = 0;
 let draftApplyTimerId = null;
 let busDraftApplyTimerId = null;
 let isSyncingDraft = false;
@@ -2079,16 +2080,43 @@ function normalizeBusColor(value, fallback = BUS_COLOR_POOL[0]) {
   return normalizeNodeBaseColor(value, fallback);
 }
 
-function persistNodes() {
+function persistNodesNow() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       nodes: cloneNodesSnapshot(nodes.value),
       buses: cloneBusesSnapshot(buses.value),
       links: cloneLinksSnapshot(links.value),
     }));
+    lastPersistAt = Date.now();
+    persistPending = false;
   } catch (_) {
     // Ignore storage errors.
   }
+}
+
+function persistNodes() {
+  const PERSIST_THROTTLE_MS = 5000;
+  const now = Date.now();
+  const elapsed = now - lastPersistAt;
+
+  if (lastPersistAt === 0 || elapsed >= PERSIST_THROTTLE_MS) {
+    if (persistThrottleTimerId) {
+      window.clearTimeout(persistThrottleTimerId);
+      persistThrottleTimerId = null;
+    }
+    persistNodesNow();
+    return;
+  }
+
+  persistPending = true;
+  if (persistThrottleTimerId) return;
+
+  const delay = Math.max(0, PERSIST_THROTTLE_MS - elapsed);
+  persistThrottleTimerId = window.setTimeout(() => {
+    persistThrottleTimerId = null;
+    if (!persistPending) return;
+    persistNodesNow();
+  }, delay);
 }
 
 function buildArchitectureConfig() {
@@ -2178,17 +2206,10 @@ async function handleConfigFileChosen(event) {
   }
 }
 
-function startAutoSaveTimer() {
-  if (autoSaveTimerId) return;
-  autoSaveTimerId = window.setInterval(() => {
-    persistNodes();
-  }, AUTO_SAVE_INTERVAL_MS);
-}
-
-function stopAutoSaveTimer() {
-  if (!autoSaveTimerId) return;
-  window.clearInterval(autoSaveTimerId);
-  autoSaveTimerId = null;
+function stopPersistThrottleTimer() {
+  if (!persistThrottleTimerId) return;
+  window.clearTimeout(persistThrottleTimerId);
+  persistThrottleTimerId = null;
 }
 
 function stopDraftApplyTimer() {
@@ -4205,7 +4226,6 @@ function handleDocumentKeydown(event) {
 
 onMounted(() => {
   loadNodes();
-  startAutoSaveTimer();
   setStatus('CAN 节点设计器已就绪。');
   window.addEventListener('pointerdown', onDocumentPointerDown);
   window.addEventListener('keydown', handleDocumentKeydown);
@@ -4226,7 +4246,7 @@ onBeforeUnmount(() => {
   onCanvasResizePointerUp();
   stopBoxSelection();
   closeContextMenu();
-  stopAutoSaveTimer();
+  stopPersistThrottleTimer();
   stopDraftApplyTimer();
   if (busDraftApplyTimerId) {
     window.clearTimeout(busDraftApplyTimerId);
