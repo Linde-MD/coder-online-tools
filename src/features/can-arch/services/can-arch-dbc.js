@@ -461,6 +461,7 @@ export function parseDbcMessages(dbcText) {
         txMode: 'periodic',
         periodMs: 100,
         byteOrder: 'intel',
+        dlcMode: 'fixed',
         layoutMode: 'compact',
         comment: '',
         j1939: { enabled: false, mode: 'id', id: '', pgn: '', priority: 6, sa: '', da: '' },

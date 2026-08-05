@@ -16,9 +16,14 @@ export class CanMessage {
     this.idHex = data.idHex ?? '0x000';
     this.triggerMode = data.triggerMode ?? 'cyclic';
     this.txMode = data.txMode ?? 'periodic';
-    this.periodMs = Number.isInteger(data.periodMs) ? data.periodMs : 100;
+    if (this.txMode === 'event') {
+      this.periodMs = Number.isInteger(data.periodMs) && data.periodMs >= 0 ? data.periodMs : null;
+    } else {
+      this.periodMs = Number.isInteger(data.periodMs) && data.periodMs >= 0 ? data.periodMs : 100;
+    }
     this.byteOrder = data.byteOrder ?? 'intel';
-    this.dlc = Number.isInteger(data.dlc) ? data.dlc : 8;
+    this.dlcMode = data.dlcMode === 'variable' ? 'variable' : 'fixed';
+    this.dlc = Number.isInteger(data.dlc) ? Math.max(0, Math.min(64, data.dlc)) : 8;
     this.layoutMode = data.layoutMode ?? 'compact';
     this.comment = data.comment ?? '';
     this.senders = Array.isArray(data.senders) ? [...data.senders] : (ecuId ? [ecuId] : []);
@@ -100,8 +105,9 @@ export class CanMessage {
       idHex: this.idHex,
       triggerMode: this.triggerMode,
       txMode: this.txMode,
-      periodMs: this.periodMs,
+      periodMs: this.txMode === 'event' ? null : this.periodMs,
       byteOrder: this.byteOrder,
+      dlcMode: this.dlcMode,
       dlc: this.dlc,
       layoutMode: this.layoutMode,
       comment: this.comment,

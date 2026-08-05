@@ -15,6 +15,85 @@ function cacheKey(ecu, bus) {
 const filterStateCache = new Map();
 const preSnapshot = new Map();
 
+function resolveMessageTotalBits(message) {
+  const rawDlc = Number.parseInt(message?.dlc, 10);
+  const dlc = Number.isInteger(rawDlc) ? Math.max(0, Math.min(64, rawDlc)) : 8;
+  return Math.max(0, dlc * 8);
+}
+
+function expandSignalBits(signal, byteOrder = 'intel') {
+  const rawLength = Number.parseInt(signal?.length, 10);
+  const length = Number.isInteger(rawLength) ? Math.max(1, rawLength) : 1;
+  const rawStart = Number.parseInt(signal?.startBit, 10);
+  const startBit = Number.isInteger(rawStart) ? rawStart : 0;
+  const bits = [];
+
+  if (byteOrder === 'motorola') {
+    // Vector-style Motorola startBit: treat startBit as LSB index.
+    let current = startBit;
+    for (let idx = 0; idx < length; idx += 1) {
+      bits.push(current);
+      if (current % 8 === 7) {
+        current -= 15;
+      } else {
+        current += 1;
+      }
+    }
+    return bits;
+  }
+
+  for (let idx = 0; idx < length; idx += 1) {
+    bits.push(startBit + idx);
+  }
+  return bits;
+}
+
+function collectMessageLayoutErrors(message) {
+  const layoutErrors = [];
+  if (!message) return layoutErrors;
+
+  const totalBits = resolveMessageTotalBits(message);
+  const byteOrder = message?.byteOrder === 'motorola' ? 'motorola' : 'intel';
+  const signals = Array.isArray(message?.signals) ? message.signals : [];
+  const bitOwners = new Map();
+
+  for (const signal of signals) {
+    if (!signal) continue;
+    const signalName = String(signal.name || '未命名Signal');
+    const bits = expandSignalBits(signal, byteOrder);
+
+    const outOfRangeBits = bits.filter((bit) => bit < 0 || bit >= totalBits);
+    if (outOfRangeBits.length > 0) {
+      layoutErrors.push(`Signal "${signalName}" 超出可用 bit 范围（DLC=${message.dlc}，字节序=${byteOrder}）。`);
+    }
+
+    for (const bit of bits) {
+      if (bit < 0 || bit >= totalBits) continue;
+      if (!bitOwners.has(bit)) {
+        bitOwners.set(bit, []);
+      }
+      bitOwners.get(bit).push(signalName);
+    }
+  }
+
+  const overlapPairs = new Set();
+  for (const [, owners] of bitOwners) {
+    if (owners.length <= 1) continue;
+    const uniqueOwners = [...new Set(owners)].sort();
+    for (let i = 0; i < uniqueOwners.length; i += 1) {
+      for (let j = i + 1; j < uniqueOwners.length; j += 1) {
+        overlapPairs.add(`${uniqueOwners[i]} <> ${uniqueOwners[j]}`);
+      }
+    }
+  }
+
+  if (overlapPairs.size > 0) {
+    layoutErrors.push(`Signal bit 区间重叠：${[...overlapPairs].join('；')}`);
+  }
+
+  return layoutErrors;
+}
+
 export function detectMessageErrors(rxMessages, txMessages) {
   const errors = new Map();
   const allMessages = [...rxMessages, ...txMessages];
@@ -59,6 +138,18 @@ export function detectMessageErrors(rxMessages, txMessages) {
         errors.set(id, existing);
       }
     }
+  }
+
+  for (const message of allMessages) {
+    if (!message?.id) continue;
+    const layoutErrors = collectMessageLayoutErrors(message);
+    if (layoutErrors.length === 0) continue;
+    const existing = errors.get(message.id) || { types: [], messages: [] };
+    for (const errText of layoutErrors) {
+      existing.types.push('layout_error');
+      existing.messages.push(errText);
+    }
+    errors.set(message.id, existing);
   }
 
   return errors;
