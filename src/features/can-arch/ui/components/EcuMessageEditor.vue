@@ -75,6 +75,10 @@
           <div class="ecu-msg-pane-head">
             <strong>接收报文</strong>
             <span class="ecu-msg-count">共 {{ filteredRxMessages.length }} 条</span>
+            <label class="ecu-rx-broadcast-toggle" title="勾选后包含 broadcast 报文">
+              <input v-model="includeRxBroadcast" type="checkbox">
+              <span>含 broadcast</span>
+            </label>
             <div class="ecu-msg-sort-bar">
               <span class="ecu-msg-sort-label">排序</span>
               <span
@@ -368,8 +372,8 @@
 
             <label>接收方</label>
             <div class="ecu-participant-list">
-              <div v-if="selectedMessageIsBroadcast" class="ecu-participant-item is-broadcast" title="广播报文将导出为 Vector__XXX">
-                <span class="ecu-participant-name">广播（Vector__XXX）</span>
+              <div v-if="selectedMessageIsBroadcast" class="ecu-participant-item is-broadcast" title="broadcast">
+                <span class="ecu-participant-name">broadcast</span>
                 <button
                   type="button"
                   class="ecu-participant-icon-btn danger"
@@ -416,7 +420,7 @@
               <div v-if="receiverPickerOpen" class="ecu-participant-picker">
                 <label class="ecu-participant-picker-option ecu-participant-picker-broadcast">
                   <input v-model="receiverPickerBroadcast" class="form-check-input" type="checkbox">
-                  <span>广播（无需接收节点，导出为 Vector__XXX）</span>
+                  <span>broadcast</span>
                 </label>
                 <div class="ecu-participant-picker-list">
                   <label
@@ -638,6 +642,7 @@ const {
   protocolValues,
   filterPeerIds,
   filterProtocols,
+  includeRxBroadcast,
   rxMessages,
   txMessages,
   filteredRxMessages,
@@ -1245,28 +1250,86 @@ function closeParticipantPicker(key) {
   receiverPickerBroadcast.value = false;
 }
 
+function hasEffectiveReceiver(nextReceivers, nextReceiverIsBroadcast = false) {
+  return nextReceiverIsBroadcast || (Array.isArray(nextReceivers) && nextReceivers.length > 0);
+}
+
+function hasCurrentEcuSender(message) {
+  const currentEcuId = props.ecu?.id;
+  return !!currentEcuId && Array.isArray(message?.senders) && message.senders.includes(currentEcuId);
+}
+
+function hasCurrentEcuReceiver(message) {
+  const currentEcuId = props.ecu?.id;
+  if (!currentEcuId) return false;
+  if (message?.receiverMode === 'broadcast') return true;
+  return Array.isArray(message?.receivers) && message.receivers.includes(currentEcuId);
+}
+
+function shouldDeleteMessage(nextSenders, nextReceivers, nextReceiverIsBroadcast = false) {
+  return nextSenders.length === 0 && !hasEffectiveReceiver(nextReceivers, nextReceiverIsBroadcast);
+}
+
+function confirmParticipantMutation(message, key, nextSenders, nextReceivers, nextReceiverIsBroadcast = false) {
+  const currentPane = selectedEntity.value?.pane;
+  const currentSenders = Array.isArray(message?.senders) ? message.senders : [];
+  const currentReceivers = Array.isArray(message?.receivers) ? message.receivers : [];
+
+  if (shouldDeleteMessage(nextSenders, nextReceivers, nextReceiverIsBroadcast)) {
+    return window.confirm('发送方和接收方都为空，会导致 message 被删除，确认继续吗？');
+  }
+
+  if (key === 'senders'
+    && currentPane === 'tx'
+    && hasCurrentEcuSender(message)
+    && !nextSenders.includes(props.ecu?.id)) {
+    return window.confirm('修改后当前 ECU 不再是发送方，message 会从发送报文区消失，确认继续吗？');
+  }
+
+  if (key === 'receivers'
+    && currentPane === 'rx'
+    && message?.receiverMode === 'broadcast'
+    && !nextReceiverIsBroadcast) {
+    return window.confirm('关闭 broadcast 后，message 会从接收报文区消失，确认继续吗？');
+  }
+
+  if (key === 'receivers'
+    && currentPane === 'rx'
+    && hasCurrentEcuReceiver(message)
+    && !nextReceiverIsBroadcast
+    && !nextReceivers.includes(props.ecu?.id)) {
+    return window.confirm('修改后当前 ECU 不再是接收方，message 会从接收报文区消失，确认继续吗？');
+  }
+
+  return true;
+}
+
 function confirmParticipantPicker(key) {
   const message = selectedMessageEntity.value;
   if (!message) return;
-  if (key === 'receivers' && receiverPickerBroadcast.value) {
-    message.receiverMode = 'broadcast';
-    message.receivers = [];
-    closeParticipantPicker(key);
+  const currentSenders = Array.isArray(message.senders) ? [...message.senders] : [];
+  const currentReceivers = Array.isArray(message.receivers) ? [...message.receivers] : [];
+  const picked = key === 'senders' ? senderPickerSelection.value : receiverPickerSelection.value;
+  const nextSenders = key === 'senders'
+    ? [...new Set([...currentSenders, ...picked])]
+    : currentSenders;
+  const nextReceivers = key === 'receivers'
+    ? (receiverPickerBroadcast.value ? [] : [...new Set([...currentReceivers, ...picked])])
+    : currentReceivers;
+
+  if (!confirmParticipantMutation(message, key, nextSenders, nextReceivers, receiverPickerBroadcast.value)) {
     return;
   }
 
-  const list = ensureMessageParticipantList(message, key);
-  const picked = key === 'senders' ? senderPickerSelection.value : receiverPickerSelection.value;
-  const merged = [...list];
-  for (const id of picked) {
-    if (!merged.includes(id)) {
-      merged.push(id);
-    }
+  if (shouldDeleteMessage(nextSenders, nextReceivers, receiverPickerBroadcast.value)) {
+    closeParticipantPicker(key);
+    deleteSelection();
+    return;
   }
-  message[key] = merged;
-  if (key === 'receivers') {
-    message.receiverMode = 'nodes';
-  }
+
+  message.senders = nextSenders;
+  message.receivers = nextReceivers;
+  message.receiverMode = receiverPickerBroadcast.value ? 'broadcast' : 'nodes';
   closeParticipantPicker(key);
 }
 
@@ -1275,6 +1338,21 @@ function removeMessageParticipant(key, participantId) {
   if (!message) return;
   const list = ensureMessageParticipantList(message, key);
   const next = list.filter((id) => id !== participantId);
+
+  const currentSenders = Array.isArray(message.senders) ? [...message.senders] : [];
+  const currentReceivers = Array.isArray(message.receivers) ? [...message.receivers] : [];
+  const nextSenders = key === 'senders' ? next : currentSenders;
+  const nextReceivers = key === 'receivers' ? next : currentReceivers;
+
+  if (!confirmParticipantMutation(message, key, nextSenders, nextReceivers, message.receiverMode === 'broadcast')) {
+    return;
+  }
+
+  if (shouldDeleteMessage(nextSenders, nextReceivers, message.receiverMode === 'broadcast')) {
+    deleteSelection();
+    return;
+  }
+
   message[key] = next;
   if (key === 'receivers') {
     message.receiverMode = 'nodes';
@@ -1284,6 +1362,19 @@ function removeMessageParticipant(key, participantId) {
 function disableBroadcastReceivers() {
   const message = selectedMessageEntity.value;
   if (!message) return;
+  const currentSenders = Array.isArray(message.senders) ? [...message.senders] : [];
+  const nextSenders = currentSenders;
+  const nextReceivers = [];
+
+  if (!confirmParticipantMutation(message, 'receivers', nextSenders, nextReceivers, false)) {
+    return;
+  }
+
+  if (shouldDeleteMessage(nextSenders, nextReceivers, false)) {
+    deleteSelection();
+    return;
+  }
+
   message.receiverMode = 'nodes';
 }
 
@@ -1899,6 +1990,38 @@ defineExpose({
   border-color: #b08863;
   box-shadow: 0 0 0 2px rgba(176, 136, 99, 0.3);
   background: #e8d9c8;
+}
+
+.ecu-rx-broadcast-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+  min-height: 24px;
+  border-radius: 6px;
+  border: 1px solid #e1d3c6;
+  background: #f5f0eb;
+  color: #8b7355;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.ecu-rx-broadcast-toggle input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: #b08863;
+}
+
+.ecu-rx-broadcast-toggle:hover {
+  background: #efe5da;
+  border-color: #d4c5b5;
 }
 
 .ecu-msg-collapse {

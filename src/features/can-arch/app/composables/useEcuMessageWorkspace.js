@@ -183,6 +183,7 @@ export function useEcuMessageWorkspace({ ecuRef, busTabsRef }) {
   const activeBusId = ref('');
   const filterPeerIds = ref([]);
   const filterProtocols = ref([...protocolValues]);
+  const includeRxBroadcast = ref(false);
 
   const ecuId = computed(() => ecuRef.value?.id || '');
 
@@ -417,7 +418,8 @@ export function useEcuMessageWorkspace({ ecuRef, busTabsRef }) {
 
   const filteredRxMessages = computed(() =>
     rxMessages.value.filter((message) => {
-      const peerOk = filterPeerIds.value.length === 0 || intersects(message.senders, filterPeerIds.value);
+      const addressedToCurrentEcu = intersects(message.receivers, [ecuId.value]);
+      const peerOk = (includeRxBroadcast.value && message.receiverMode === 'broadcast') || addressedToCurrentEcu;
       const protocolOk = filterProtocols.value.length === 0 || filterProtocols.value.includes(message.protocol);
       return peerOk && protocolOk;
     })
@@ -425,7 +427,8 @@ export function useEcuMessageWorkspace({ ecuRef, busTabsRef }) {
 
   const filteredTxMessages = computed(() =>
     txMessages.value.filter((message) => {
-      const peerOk = filterPeerIds.value.length === 0 || intersects(message.receivers, filterPeerIds.value);
+      const ownsMessage = intersects(message.senders, [ecuId.value]);
+      const peerOk = ownsMessage;
       const protocolOk = filterProtocols.value.length === 0 || filterProtocols.value.includes(message.protocol);
       return peerOk && protocolOk;
     })
@@ -529,6 +532,7 @@ export function useEcuMessageWorkspace({ ecuRef, busTabsRef }) {
     peerOptions,
     filterPeerIds,
     filterProtocols,
+    includeRxBroadcast,
     rxMessages,
     txMessages,
     filteredRxMessages,
