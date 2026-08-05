@@ -1,5 +1,12 @@
 import { computed, nextTick, ref, watch } from 'vue';
 import { CanMessage } from '../../domain/models/CanMessage.js';
+import { decodeJ1939Id, encodeJ1939IdFromPgn, parseNumberInput } from '../../../../shared/utils/j1939.js';
+
+const J1939_PRIORITY_DONT_CARE = 'dont_care';
+
+function isJ1939PriorityDontCare(priority) {
+  return String(priority ?? '').trim().toLowerCase() === J1939_PRIORITY_DONT_CARE;
+}
 
 function intersects(a, b) {
   if (!Array.isArray(a) || !Array.isArray(b) || a.length === 0 || b.length === 0) return false;
@@ -94,6 +101,93 @@ function collectMessageLayoutErrors(message) {
   return layoutErrors;
 }
 
+function collectMessageJ1939Errors(message) {
+  const j1939Errors = [];
+  if (!message || message.protocol !== 'j1939') return j1939Errors;
+
+  const j1939 = message.j1939 || {};
+  const priorityDontCare = isJ1939PriorityDontCare(j1939.priority);
+
+  let rawId = null;
+  if (!priorityDontCare) {
+    rawId = parseNumberInput(message.idHex);
+    if (!Number.isInteger(rawId)) {
+      j1939Errors.push('J1939 报文 ID 无效：请输入 0x 十六进制或十进制 ID。');
+      return j1939Errors;
+    }
+
+    const decoded = decodeJ1939Id(rawId);
+    if (!decoded.valid) {
+      j1939Errors.push(decoded.error);
+      return j1939Errors;
+    }
+  }
+
+  const pgn = parseNumberInput(j1939.pgn);
+  const priority = parseNumberInput(j1939.priority);
+  const sa = parseNumberInput(j1939.sa);
+  if (!Number.isInteger(pgn) || pgn < 0 || pgn > 0x3FFFF) {
+    j1939Errors.push('J1939 字段错误：PGN 必须是 0 ~ 0x3FFFF 的整数。');
+  }
+  if (!priorityDontCare && (!Number.isInteger(priority) || priority < 0 || priority > 7)) {
+    j1939Errors.push('J1939 字段错误：Priority 必须是 0 ~ 7 的整数。');
+  }
+  if (!Number.isInteger(sa) || sa < 0 || sa > 0xFF) {
+    j1939Errors.push('J1939 字段错误：SA 必须是 0 ~ 255 的整数。');
+  }
+  if (j1939Errors.length > 0) {
+    return j1939Errors;
+  }
+
+  const pf = (pgn >> 8) & 0xFF;
+  const isPdu2 = pf >= 240;
+  const da = isPdu2 ? 0 : parseNumberInput(j1939.da);
+  if (!isPdu2 && (!Number.isInteger(da) || da < 0 || da > 0xFF)) {
+    j1939Errors.push('J1939 字段错误：PF < 240 时，DA 必须是 0 ~ 255 的整数。');
+    return j1939Errors;
+  }
+
+  if (priorityDontCare) {
+    return j1939Errors;
+  }
+
+  const encoded = encodeJ1939IdFromPgn(pgn, priority, sa, da);
+  if (!encoded.valid) {
+    j1939Errors.push(encoded.error);
+    return j1939Errors;
+  }
+
+  if (encoded.id !== rawId) {
+    j1939Errors.push('J1939 字段与 ID 不一致：请检查 PGN/Priority/SA/DA 与 ID 的对应关系。');
+  }
+
+  return j1939Errors;
+}
+
+function resolveJ1939DuplicateKey(message) {
+  if (!message || message.protocol !== 'j1939') return '';
+
+  const j1939 = message.j1939 || {};
+  const pgn = parseNumberInput(j1939.pgn);
+  const sa = parseNumberInput(j1939.sa);
+
+  if (Number.isInteger(pgn) && pgn >= 0 && pgn <= 0x3FFFF && Number.isInteger(sa) && sa >= 0 && sa <= 0xFF) {
+    const pf = (pgn >> 8) & 0xFF;
+    const isPdu2 = pf >= 240;
+    const da = isPdu2 ? 'broadcast' : parseNumberInput(j1939.da);
+    if (isPdu2 || (Number.isInteger(da) && da >= 0 && da <= 0xFF)) {
+      return `${pgn}|${sa}|${da}`;
+    }
+  }
+
+  const rawId = parseNumberInput(message.idHex);
+  if (!Number.isInteger(rawId)) return '';
+  const decoded = decodeJ1939Id(rawId);
+  if (!decoded.valid) return '';
+  const da = decoded.isBroadcast ? 'broadcast' : decoded.destinationAddress;
+  return `${decoded.PGN}|${decoded.SA}|${da}`;
+}
+
 export function detectMessageErrors(rxMessages, txMessages) {
   const errors = new Map();
   const allMessages = [...rxMessages, ...txMessages];
@@ -140,6 +234,26 @@ export function detectMessageErrors(rxMessages, txMessages) {
     }
   }
 
+  const j1939KeyMap = new Map();
+  for (const msg of allMessages) {
+    const key = resolveJ1939DuplicateKey(msg);
+    if (!key) continue;
+    if (!j1939KeyMap.has(key)) {
+      j1939KeyMap.set(key, []);
+    }
+    j1939KeyMap.get(key).push(msg.id);
+  }
+  for (const [key, ids] of j1939KeyMap) {
+    if (ids.length <= 1) continue;
+    const [pgn, sa, da] = key.split('|');
+    for (const id of ids) {
+      const existing = errors.get(id) || { types: [], messages: [] };
+      existing.types.push('duplicate_j1939_tuple');
+      existing.messages.push(`J1939 组合重复：PGN=${pgn}, SA=${sa}, DA=${da}（忽略 Priority）。`);
+      errors.set(id, existing);
+    }
+  }
+
   for (const message of allMessages) {
     if (!message?.id) continue;
     const senders = Array.isArray(message.senders) ? message.senders : [];
@@ -160,6 +274,12 @@ export function detectMessageErrors(rxMessages, txMessages) {
     const layoutErrors = collectMessageLayoutErrors(message);
     for (const errText of layoutErrors) {
       existing.types.push('layout_error');
+      existing.messages.push(errText);
+    }
+
+    const j1939Errors = collectMessageJ1939Errors(message);
+    for (const errText of j1939Errors) {
+      existing.types.push('j1939_error');
       existing.messages.push(errText);
     }
 

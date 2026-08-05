@@ -240,14 +240,80 @@
             </select>
 
             <label>ID</label>
-            <input
-              v-model="selectedEntity.entity.idHex"
-              class="form-control form-control-sm"
-              :maxlength="selectedMessageIdHexDigits + 2"
-              :placeholder="selectedMessageIdPlaceholder"
-              :title="selectedMessageIdHint"
-              @blur="onMessageIdBlur(selectedEntity.entity)"
-            >
+            <div class="ecu-j1939-id-section">
+              <input
+                v-model="selectedEntity.entity.idHex"
+                class="form-control form-control-sm"
+                :class="{ 'ecu-id-disabled': selectedMessageIdDisabled }"
+                :disabled="selectedMessageIdDisabled"
+                :maxlength="selectedMessageIdHexDigits + 2"
+                :placeholder="selectedMessageIdPlaceholder"
+                :title="selectedMessageIdHint"
+                @input="onMessageIdInput(selectedEntity.entity)"
+                @blur="onMessageIdBlur(selectedEntity.entity)"
+              >
+
+              <template v-if="isSelectedMessageJ1939">
+                <button
+                  class="ecu-j1939-toggle"
+                  type="button"
+                  :title="j1939PanelOpen ? '收起 J1939 字段' : '展开 J1939 字段'"
+                  @click="j1939PanelOpen = !j1939PanelOpen"
+                >
+                  <span>{{ j1939PanelOpen ? '▾' : '▸' }} J1939 字段</span>
+                </button>
+
+                <div v-if="j1939PanelOpen" class="ecu-j1939-panel">
+                  <div class="ecu-prop-grid ecu-j1939-grid">
+                    <label>PGN</label>
+                    <input
+                      v-model="selectedEntity.entity.j1939.pgn"
+                      class="form-control form-control-sm"
+                      placeholder="65265 或 0x0FEEF"
+                      @input="onJ1939FieldInput(selectedEntity.entity, 'pgn')"
+                    >
+
+                    <label>Priority</label>
+                    <select
+                      v-model="selectedEntity.entity.j1939.priority"
+                      class="form-select form-select-sm"
+                      @change="onJ1939FieldInput(selectedEntity.entity, 'priority')"
+                    >
+                      <option value="dont_care">don't care</option>
+                      <option v-for="p in 8" :key="`j1939-priority-${p - 1}`" :value="p - 1">{{ p - 1 }}</option>
+                    </select>
+
+                    <label>SA</label>
+                    <input
+                      v-model="selectedEntity.entity.j1939.sa"
+                      class="form-control form-control-sm"
+                      placeholder="131 或 0x83"
+                      @input="onJ1939FieldInput(selectedEntity.entity, 'sa')"
+                    >
+
+                    <label>DA</label>
+                    <input
+                      v-model="selectedEntity.entity.j1939.da"
+                      class="form-control form-control-sm"
+                      :disabled="selectedMessageJ1939DaDisabled"
+                      :placeholder="selectedMessageJ1939DaDisabled ? 'broadcast (PF >= 240)' : '39 或 0x27'"
+                      @input="onJ1939FieldInput(selectedEntity.entity, 'da')"
+                    >
+                  </div>
+
+                  <div v-if="selectedMessageJ1939Hint" class="ecu-j1939-hint">
+                    {{ selectedMessageJ1939Hint }}
+                  </div>
+
+                  <div v-if="selectedMessageJ1939Errors.length > 0" class="ecu-j1939-errors" role="alert">
+                    <div class="ecu-j1939-errors-title">J1939 配置错误</div>
+                    <ul>
+                      <li v-for="(msg, idx) in selectedMessageJ1939Errors" :key="`j1939-err-${idx}`">{{ msg }}</li>
+                    </ul>
+                  </div>
+                </div>
+              </template>
+            </div>
 
             <label>发送模式</label>
             <select v-model="selectedEntity.entity.txMode" class="form-select form-select-sm" @change="onMessageTxModeChanged(selectedEntity.entity)">
@@ -447,35 +513,6 @@
             </div>
           </div>
 
-          <label class="form-check-label d-flex align-items-center gap-2 mt-2 mb-1">
-            <input v-model="selectedEntity.entity.j1939.enabled" class="form-check-input" type="checkbox">J1939 字段
-          </label>
-
-          <template v-if="selectedEntity.entity.j1939.enabled">
-            <div class="ecu-prop-grid">
-              <label>J1939 配置方式</label>
-              <select v-model="selectedEntity.entity.j1939.mode" class="form-select form-select-sm">
-                <option value="id">直接配置 ID</option>
-                <option value="pgn">配置 PGN/Priority/SA/DA</option>
-              </select>
-
-              <label>ID</label>
-              <input v-model="selectedEntity.entity.j1939.id" class="form-control form-control-sm" placeholder="0x18FEF100">
-
-              <label>PGN</label>
-              <input v-model="selectedEntity.entity.j1939.pgn" class="form-control form-control-sm" placeholder="65265">
-
-              <label>Priority</label>
-              <input v-model.number="selectedEntity.entity.j1939.priority" class="form-control form-control-sm" type="number" min="0" max="7">
-
-              <label>SA</label>
-              <input v-model="selectedEntity.entity.j1939.sa" class="form-control form-control-sm" placeholder="源地址">
-
-              <label>DA</label>
-              <input v-model="selectedEntity.entity.j1939.da" class="form-control form-control-sm" placeholder="目的地址">
-            </div>
-          </template>
-
           <label class="mt-2 mb-1">注释</label>
           <textarea v-model="selectedEntity.entity.comment" class="form-control form-control-sm" rows="2"></textarea>
         </template>
@@ -602,6 +639,13 @@ import { useEcuMessageSelection } from '@/features/can-arch/app/composables/useE
 import { useEcuMessageCommands } from '@/features/can-arch/app/composables/useEcuMessageCommands.js';
 import EcuMessageFilterPanel from './EcuMessageFilterPanel.vue';
 import { filterPanelPositionCache, saveFilterPanelOpen } from '@/features/can-arch/app/composables/useFilterPanelCache.js';
+import { decodeJ1939Id, encodeJ1939IdFromPgn, formatHex, parseNumberInput } from '@/shared/utils/j1939.js';
+
+const J1939_PRIORITY_DONT_CARE = 'dont_care';
+
+function isJ1939PriorityDontCare(priority) {
+  return String(priority ?? '').trim().toLowerCase() === J1939_PRIORITY_DONT_CARE;
+}
 
 const propsPanelWidthCache = { width: 300 };
 
@@ -793,6 +837,8 @@ const receiverPickerOpen = ref(false);
 const senderPickerSelection = ref([]);
 const receiverPickerSelection = ref([]);
 const receiverPickerBroadcast = ref(false);
+const j1939PanelOpen = ref(true);
+const j1939SyncState = ref({ source: '', updating: false });
 const senderDefaultMenu = ref({
   open: false,
   x: 0,
@@ -860,7 +906,19 @@ const selectedMessageIdMaxHex = computed(() => {
   return `0x${maxValue.toString(16).toUpperCase()}`;
 });
 
+const selectedMessagePriorityDontCare = computed(() => {
+  const msg = selectedMessageEntity.value;
+  return isJ1939PriorityDontCare(msg?.j1939?.priority);
+});
+
+const selectedMessageIdDisabled = computed(() => {
+  return isSelectedMessageJ1939.value && selectedMessagePriorityDontCare.value;
+});
+
 const selectedMessageIdHint = computed(() => {
+  if (selectedMessageIdDisabled.value) {
+    return "Priority 为 don't care 时对应多个 ID，ID 字段禁用且不参与校验。";
+  }
   const modeText = selectedMessageIdBitLimit.value === 29 ? '29 bit（扩展帧）' : '11 bit（标准帧）';
   return `当前协议使用 ${modeText}，允许范围 0x0 - ${selectedMessageIdMaxHex.value}。`;
 });
@@ -955,6 +1013,42 @@ const selectedMessageLayoutErrors = computed(() => {
     }
   }
   return result;
+});
+
+const selectedMessageJ1939Errors = computed(() => {
+  const info = selectedMessageErrorInfo.value;
+  if (!info || !Array.isArray(info.types) || !Array.isArray(info.messages)) return [];
+  const result = [];
+  for (let idx = 0; idx < info.types.length; idx += 1) {
+    if (info.types[idx] === 'j1939_error' && info.messages[idx]) {
+      result.push(info.messages[idx]);
+    }
+  }
+  return result;
+});
+
+const isSelectedMessageJ1939 = computed(() => {
+  return selectedMessageEntity.value?.protocol === 'j1939';
+});
+
+const selectedMessageJ1939DaDisabled = computed(() => {
+  const msg = selectedMessageEntity.value;
+  const pgn = parseNumberInput(msg?.j1939?.pgn);
+  if (!Number.isInteger(pgn)) return false;
+  const pf = (pgn >> 8) & 0xFF;
+  return pf >= 240;
+});
+
+const selectedMessageJ1939Hint = computed(() => {
+  const msg = selectedMessageEntity.value;
+  if (!msg || msg.protocol !== 'j1939') return '';
+  const pgn = parseNumberInput(msg?.j1939?.pgn);
+  if (!Number.isInteger(pgn) || pgn < 0 || pgn > 0x3FFFF) return '';
+  const pf = (pgn >> 8) & 0xFF;
+  if (pf >= 240) {
+    return 'PF >= 240 (PDU2): DA 固定为 broadcast，ID 中 PS 由 PGN 低 8 位决定。';
+  }
+  return 'PF < 240 (PDU1): DA 必填，且 PGN 低 8 位必须为 0。';
 });
 
 function expandSignalBitsByByteOrder(startBit, length, byteOrder) {
@@ -1086,6 +1180,96 @@ function clampMessageIdByProtocol(message) {
   message.idHex = formatHexId(clamped, bitLimit);
 }
 
+function ensureJ1939Struct(message) {
+  if (!message) return null;
+  if (!message.j1939 || typeof message.j1939 !== 'object') {
+    message.j1939 = {
+      enabled: message.protocol === 'j1939',
+      mode: 'id',
+      id: '',
+      pgn: '',
+      priority: 6,
+      sa: '',
+      da: '',
+    };
+  }
+  return message.j1939;
+}
+
+function withJ1939SyncLock(source, fn) {
+  j1939SyncState.value = { source, updating: true };
+  try {
+    fn();
+  } finally {
+    j1939SyncState.value = { source: '', updating: false };
+  }
+}
+
+function syncJ1939FromId(message, options = {}) {
+  if (!message || message.protocol !== 'j1939') return;
+  const j1939 = ensureJ1939Struct(message);
+  if (isJ1939PriorityDontCare(j1939.priority) && !options.force) return;
+  const parsedId = parseNumberInput(message.idHex);
+  if (!Number.isInteger(parsedId)) return;
+  const decoded = decodeJ1939Id(parsedId);
+  if (!decoded.valid) return;
+
+  const apply = () => {
+    j1939.id = formatHex(parsedId, 8);
+    j1939.pgn = String(decoded.PGN);
+    j1939.priority = decoded.P;
+    j1939.sa = String(decoded.SA);
+    j1939.da = decoded.isBroadcast ? 'broadcast' : String(decoded.destinationAddress);
+  };
+
+  if (options.lockSource) {
+    withJ1939SyncLock(options.lockSource, apply);
+    return;
+  }
+  apply();
+}
+
+function trySyncIdFromJ1939(message, options = {}) {
+  if (!message || message.protocol !== 'j1939') return false;
+  const j1939 = ensureJ1939Struct(message);
+  if (isJ1939PriorityDontCare(j1939.priority)) {
+    return false;
+  }
+  const pgn = parseNumberInput(j1939.pgn);
+  const priority = parseNumberInput(j1939.priority);
+  const sa = parseNumberInput(j1939.sa);
+  if (!Number.isInteger(pgn) || !Number.isInteger(priority) || !Number.isInteger(sa)) {
+    return false;
+  }
+
+  const pf = (pgn >> 8) & 0xFF;
+  const isPdu2 = pf >= 240;
+  const da = isPdu2 ? 0 : parseNumberInput(j1939.da);
+  if (!isPdu2 && !Number.isInteger(da)) {
+    return false;
+  }
+
+  const encoded = encodeJ1939IdFromPgn(pgn, priority, sa, da);
+  if (!encoded.valid) {
+    return false;
+  }
+
+  const apply = () => {
+    message.idHex = formatHex(encoded.id, 8);
+    j1939.id = formatHex(encoded.id, 8);
+    if (isPdu2) {
+      j1939.da = 'broadcast';
+    }
+  };
+
+  if (options.lockSource) {
+    withJ1939SyncLock(options.lockSource, apply);
+    return true;
+  }
+  apply();
+  return true;
+}
+
 function ensureMessageDlcMode(message) {
   if (!message) return;
   if (message.dlcMode !== 'variable' && message.dlcMode !== 'fixed') {
@@ -1157,10 +1341,49 @@ function onMessageProtocolChanged(message) {
   if (!message) return;
   syncMessageProtocolColor(message);
   clampMessageIdByProtocol(message);
+  if (message.protocol === 'j1939') {
+    ensureJ1939Struct(message);
+    syncJ1939FromId(message, { lockSource: 'id' });
+    j1939PanelOpen.value = true;
+  }
+}
+
+function onMessageIdInput(message) {
+  if (!message) return;
+  if (message.protocol !== 'j1939') return;
+  if (isJ1939PriorityDontCare(message?.j1939?.priority)) return;
+  if (j1939SyncState.value.updating && j1939SyncState.value.source === 'j1939') return;
+  syncJ1939FromId(message, { lockSource: 'id' });
 }
 
 function onMessageIdBlur(message) {
   clampMessageIdByProtocol(message);
+  if (!message) return;
+  if (message.protocol !== 'j1939') return;
+  if (isJ1939PriorityDontCare(message?.j1939?.priority)) return;
+  syncJ1939FromId(message, { lockSource: 'id' });
+}
+
+function onJ1939FieldInput(message, field) {
+  if (!message || message.protocol !== 'j1939') return;
+  if (j1939SyncState.value.updating && j1939SyncState.value.source === 'id') return;
+
+  if (field === 'priority' && isJ1939PriorityDontCare(message?.j1939?.priority)) {
+    return;
+  }
+
+  if (field === 'pgn') {
+    const j1939 = ensureJ1939Struct(message);
+    const pgn = parseNumberInput(j1939.pgn);
+    if (Number.isInteger(pgn)) {
+      const pf = (pgn >> 8) & 0xFF;
+      if (pf >= 240) {
+        j1939.da = 'broadcast';
+      }
+    }
+  }
+
+  trySyncIdFromJ1939(message, { lockSource: 'j1939' });
 }
 
 function onMessageTxModeChanged(message) {
@@ -1503,6 +1726,17 @@ watch(selectedMessageEntity, (message) => {
   normalizeMessageDlc(message);
   normalizeMessageSignalLayout(message);
   clampMessageIdByProtocol(message);
+  ensureJ1939Struct(message);
+  if (message.protocol === 'j1939') {
+    if (isJ1939PriorityDontCare(message?.j1939?.priority)) {
+      j1939PanelOpen.value = true;
+      return;
+    }
+    syncJ1939FromId(message, { lockSource: 'id' });
+    j1939PanelOpen.value = true;
+  } else {
+    j1939PanelOpen.value = false;
+  }
   if (message.txMode === 'event' && message.periodMs !== null) {
     message.periodMs = null;
   }
@@ -2339,6 +2573,78 @@ defineExpose({
   padding-right: 13px;
   background-position: right 3px center;
   background-size: 10px 8px;
+}
+
+.ecu-j1939-id-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ecu-id-disabled {
+  background: #f0eee9;
+  color: #8d8378;
+  border-color: #d4cbc0;
+  cursor: not-allowed;
+}
+
+.ecu-j1939-toggle {
+  border: 1px solid #d9c4af;
+  border-radius: 7px;
+  background: #fff7ed;
+  color: #604833;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 8px;
+  text-align: left;
+}
+
+.ecu-j1939-toggle:hover {
+  border-color: #b98f6a;
+  background: #f9ebda;
+}
+
+.ecu-j1939-panel {
+  border: 1px solid #dcc7b2;
+  border-radius: 8px;
+  background: #fffaf3;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ecu-j1939-grid {
+  grid-template-columns: 64px 1fr;
+}
+
+.ecu-j1939-hint {
+  font-size: 11px;
+  color: #7a6048;
+  background: #f6e9dc;
+  border: 1px solid #e0c9b1;
+  border-radius: 6px;
+  padding: 3px 8px;
+}
+
+.ecu-j1939-errors {
+  border: 1px solid #e6a9a9;
+  border-radius: 6px;
+  background: #fff1f1;
+  color: #9b2b2b;
+  padding: 5px 8px;
+}
+
+.ecu-j1939-errors-title {
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.ecu-j1939-errors ul {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 12px;
 }
 
 .ecu-layout-launcher {
