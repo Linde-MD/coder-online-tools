@@ -188,9 +188,83 @@ function resolveJ1939DuplicateKey(message) {
   return `${decoded.PGN}|${decoded.SA}|${da}`;
 }
 
-export function detectMessageErrors(rxMessages, txMessages) {
+function normalizeJ1939AddressList(rawList) {
+  const list = Array.isArray(rawList) ? rawList : [];
+  return [...new Set(
+    list
+      .map((item) => Number.parseInt(item, 10))
+      .filter((num) => Number.isInteger(num) && num >= 0 && num <= 0xFF)
+  )];
+}
+
+function hasJ1939Protocol(meta) {
+  const protocols = Array.isArray(meta?.protocols) ? meta.protocols : [];
+  return protocols.includes('j1939');
+}
+
+function collectMessageJ1939ParticipantErrors(message, participantMetaById) {
+  const participantErrors = [];
+  if (!message || message.protocol !== 'j1939') return participantErrors;
+  const metaMap = participantMetaById instanceof Map ? participantMetaById : null;
+  if (!metaMap || metaMap.size === 0) return participantErrors;
+
+  const j1939 = message.j1939 || {};
+  const sa = parseNumberInput(j1939.sa);
+  const daRaw = String(j1939.da ?? '').trim().toLowerCase();
+  const da = parseNumberInput(j1939.da);
+  const pgn = parseNumberInput(j1939.pgn);
+  const pf = Number.isInteger(pgn) ? ((pgn >> 8) & 0xFF) : null;
+  const daIsBroadcast = daRaw === 'broadcast' || pf >= 240;
+
+  if (Number.isInteger(sa) && sa >= 0 && sa <= 0xFF) {
+    const senders = Array.isArray(message.senders) ? message.senders : [];
+    if (senders.length === 0) {
+      participantErrors.push('J1939 发送方错误：未匹配到 SA 对应 ECU。');
+    }
+    for (const senderId of senders) {
+      const senderMeta = metaMap.get(senderId);
+      const senderAddresses = normalizeJ1939AddressList(senderMeta?.j1939Addresses);
+      if (!senderAddresses.includes(sa)) {
+        participantErrors.push(`J1939 发送方错误：发送方 ${senderId} 不包含 SA=${sa}。`);
+      }
+    }
+  }
+
+  const receivers = Array.isArray(message.receivers) ? message.receivers : [];
+  if (daIsBroadcast || message.receiverMode === 'broadcast') {
+    if (message.receiverMode !== 'broadcast' && receivers.length > 0) {
+      for (const receiverId of receivers) {
+        const receiverMeta = metaMap.get(receiverId);
+        if (!hasJ1939Protocol(receiverMeta)) {
+          participantErrors.push(`J1939 接收方错误：接收方 ${receiverId} 未启用 J1939（DA=broadcast）。`);
+        }
+      }
+    }
+    return participantErrors;
+  }
+
+  if (!Number.isInteger(da) || da < 0 || da > 0xFF) {
+    return participantErrors;
+  }
+
+  if (receivers.length === 0) {
+    participantErrors.push(`J1939 接收方错误：未匹配到 DA=${da} 对应 ECU。`);
+  }
+  for (const receiverId of receivers) {
+    const receiverMeta = metaMap.get(receiverId);
+    const receiverAddresses = normalizeJ1939AddressList(receiverMeta?.j1939Addresses);
+    if (!receiverAddresses.includes(da)) {
+      participantErrors.push(`J1939 接收方错误：接收方 ${receiverId} 不包含 DA=${da}。`);
+    }
+  }
+
+  return participantErrors;
+}
+
+export function detectMessageErrors(rxMessages, txMessages, options = {}) {
   const errors = new Map();
   const allMessages = [...rxMessages, ...txMessages];
+  const participantMetaById = options?.participantMetaById instanceof Map ? options.participantMetaById : null;
 
   const nameMap = new Map();
   for (const msg of allMessages) {
@@ -280,6 +354,12 @@ export function detectMessageErrors(rxMessages, txMessages) {
     const j1939Errors = collectMessageJ1939Errors(message);
     for (const errText of j1939Errors) {
       existing.types.push('j1939_error');
+      existing.messages.push(errText);
+    }
+
+    const j1939ParticipantErrors = collectMessageJ1939ParticipantErrors(message, participantMetaById);
+    for (const errText of j1939ParticipantErrors) {
+      existing.types.push('j1939_participant_error');
       existing.messages.push(errText);
     }
 
@@ -554,7 +634,32 @@ export function useEcuMessageWorkspace({ ecuRef, busTabsRef }) {
     })
   );
 
-  const messageErrors = computed(() => detectMessageErrors(rxMessages.value, txMessages.value));
+  const participantMetaById = computed(() => {
+    const map = new Map();
+    const currentEcu = ecuRef.value;
+    if (currentEcu?.id) {
+      map.set(currentEcu.id, {
+        id: currentEcu.id,
+        protocols: Array.isArray(currentEcu.protocols) ? [...currentEcu.protocols] : [],
+        j1939Addresses: Array.isArray(currentEcu.j1939Addresses) ? [...currentEcu.j1939Addresses] : [],
+      });
+    }
+    for (const peer of peerOptions.value || []) {
+      if (!peer?.id) continue;
+      map.set(peer.id, {
+        id: peer.id,
+        protocols: Array.isArray(peer.protocols) ? [...peer.protocols] : [],
+        j1939Addresses: Array.isArray(peer.j1939Addresses) ? [...peer.j1939Addresses] : [],
+      });
+    }
+    return map;
+  });
+
+  const messageErrors = computed(() => detectMessageErrors(
+    rxMessages.value,
+    txMessages.value,
+    { participantMetaById: participantMetaById.value }
+  ));
 
   function flattenRows(messages, pane) {
     const rows = [];

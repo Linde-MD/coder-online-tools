@@ -1167,6 +1167,138 @@ const bitRowSegmentsMap = computed(() => {
   return map;
 });
 
+function participantOptionsToMetaMap() {
+  const map = new Map();
+  const current = ecuRef.value;
+  if (current?.id) {
+    map.set(current.id, {
+      id: current.id,
+      protocols: Array.isArray(current.protocols) ? [...current.protocols] : [],
+      j1939Addresses: Array.isArray(current.j1939Addresses) ? [...current.j1939Addresses] : [],
+    });
+  }
+  for (const peer of peerOptions.value || []) {
+    if (!peer?.id) continue;
+    map.set(peer.id, {
+      id: peer.id,
+      protocols: Array.isArray(peer.protocols) ? [...peer.protocols] : [],
+      j1939Addresses: Array.isArray(peer.j1939Addresses) ? [...peer.j1939Addresses] : [],
+    });
+  }
+  return map;
+}
+
+function normalizeJ1939AddressList(rawList) {
+  const list = Array.isArray(rawList) ? rawList : [];
+  return [...new Set(
+    list
+      .map((item) => Number.parseInt(item, 10))
+      .filter((num) => Number.isInteger(num) && num >= 0 && num <= 0xFF),
+  )];
+}
+
+function isMetaJ1939Capable(meta) {
+  const protocols = Array.isArray(meta?.protocols) ? meta.protocols : [];
+  return protocols.includes('j1939');
+}
+
+function findParticipantIdsByAddress(address, metaMap) {
+  if (!Number.isInteger(address) || !metaMap) return [];
+  const matched = [];
+  for (const [id, meta] of metaMap.entries()) {
+    const addrList = normalizeJ1939AddressList(meta?.j1939Addresses);
+    if (addrList.includes(address)) {
+      matched.push(id);
+    }
+  }
+  return matched;
+}
+
+function syncJ1939ParticipantsFromSaDa(message) {
+  if (!message || message.protocol !== 'j1939') return;
+  const j1939 = ensureJ1939Struct(message);
+  const metaMap = participantOptionsToMetaMap();
+  const sa = parseNumberInput(j1939.sa);
+  const pgn = parseNumberInput(j1939.pgn);
+  const pf = Number.isInteger(pgn) ? ((pgn >> 8) & 0xFF) : null;
+  const daRaw = String(j1939.da ?? '').trim().toLowerCase();
+  const da = parseNumberInput(j1939.da);
+  const daIsBroadcast = daRaw === 'broadcast' || pf >= 240;
+
+  if (Number.isInteger(sa) && sa >= 0 && sa <= 0xFF) {
+    const matchedSenders = findParticipantIdsByAddress(sa, metaMap);
+    if (matchedSenders.length === 1) {
+      message.senders = [matchedSenders[0]];
+    } else if (matchedSenders.length > 1) {
+      const keep = (Array.isArray(message.senders) ? message.senders : []).filter((id) => matchedSenders.includes(id));
+      if (keep.length > 0) {
+        message.senders = keep;
+      }
+    }
+  }
+
+  if (daIsBroadcast) {
+    const existingReceivers = Array.isArray(message.receivers) ? message.receivers : [];
+    if (message.receiverMode === 'nodes' && existingReceivers.length > 0) {
+      message.receivers = existingReceivers.filter((id) => isMetaJ1939Capable(metaMap.get(id)));
+      return;
+    }
+    message.receiverMode = 'broadcast';
+    message.receivers = [];
+    return;
+  }
+
+  if (!Number.isInteger(da) || da < 0 || da > 0xFF) return;
+  const matchedReceivers = findParticipantIdsByAddress(da, metaMap);
+  if (matchedReceivers.length === 1) {
+    message.receiverMode = 'nodes';
+    message.receivers = [matchedReceivers[0]];
+    return;
+  }
+  if (matchedReceivers.length > 1) {
+    const keep = (Array.isArray(message.receivers) ? message.receivers : []).filter((id) => matchedReceivers.includes(id));
+    if (keep.length > 0) {
+      message.receiverMode = 'nodes';
+      message.receivers = keep;
+    }
+  }
+}
+
+function validateJ1939ParticipantsAfterManualEdit(message) {
+  if (!message || message.protocol !== 'j1939') return;
+  const metaMap = participantOptionsToMetaMap();
+  const j1939 = ensureJ1939Struct(message);
+  const sa = parseNumberInput(j1939.sa);
+  const pgn = parseNumberInput(j1939.pgn);
+  const pf = Number.isInteger(pgn) ? ((pgn >> 8) & 0xFF) : null;
+  const daRaw = String(j1939.da ?? '').trim().toLowerCase();
+  const da = parseNumberInput(j1939.da);
+  const daIsBroadcast = daRaw === 'broadcast' || pf >= 240;
+
+  if (Number.isInteger(sa) && sa >= 0 && sa <= 0xFF) {
+    const senders = Array.isArray(message.senders) ? message.senders : [];
+    const validSenders = senders.filter((id) => normalizeJ1939AddressList(metaMap.get(id)?.j1939Addresses).includes(sa));
+    if (validSenders.length > 0) {
+      message.senders = validSenders;
+    }
+  }
+
+  if (daIsBroadcast) {
+    if (message.receiverMode !== 'broadcast' && Array.isArray(message.receivers)) {
+      message.receivers = message.receivers.filter((id) => isMetaJ1939Capable(metaMap.get(id)));
+    }
+    return;
+  }
+
+  if (!Number.isInteger(da) || da < 0 || da > 0xFF) return;
+  if (!Array.isArray(message.receivers)) return;
+  const validReceivers = message.receivers.filter((id) => normalizeJ1939AddressList(metaMap.get(id)?.j1939Addresses).includes(da));
+  if (validReceivers.length > 0) {
+    message.receiverMode = 'nodes';
+    message.receivers = validReceivers;
+  }
+}
+
 function getBitRowSegments(row) {
   return bitRowSegmentsMap.value.get(row) || [];
 }
@@ -1404,6 +1536,7 @@ function onJ1939FieldInput(message, field) {
   }
 
   trySyncIdFromJ1939(message, { lockSource: 'j1939' });
+  syncJ1939ParticipantsFromSaDa(message);
 }
 
 function onMessageTxModeChanged(message) {
@@ -1584,6 +1717,7 @@ function confirmParticipantPicker(key) {
   message.senders = nextSenders;
   message.receivers = nextReceivers;
   message.receiverMode = receiverPickerBroadcast.value ? 'broadcast' : 'nodes';
+    validateJ1939ParticipantsAfterManualEdit(message);
   closeParticipantPicker(key);
 }
 
@@ -1611,6 +1745,7 @@ function removeMessageParticipant(key, participantId) {
   if (key === 'receivers') {
     message.receiverMode = 'nodes';
   }
+  validateJ1939ParticipantsAfterManualEdit(message);
 }
 
 function disableBroadcastReceivers() {
@@ -1630,6 +1765,7 @@ function disableBroadcastReceivers() {
   }
 
   message.receiverMode = 'nodes';
+  validateJ1939ParticipantsAfterManualEdit(message);
 }
 
 function isDefaultSender(participantId) {
@@ -1764,6 +1900,7 @@ watch(selectedMessageEntity, (message) => {
       return;
     }
     syncJ1939FromId(message, { lockSource: 'id' });
+      syncJ1939ParticipantsFromSaDa(message);
     j1939PanelOpen.value = true;
   } else {
     j1939PanelOpen.value = false;

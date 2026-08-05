@@ -541,7 +541,7 @@
             </div>
           </aside>
 
-          <div class="can-arch-status can-arch-status-floating" :class="{ error: Boolean(statusError) }">
+          <div v-if="!ecuMessageEditor.active" class="can-arch-status can-arch-status-floating" :class="{ error: Boolean(statusError) }">
             {{ floatingStatusText }}
           </div>
 
@@ -1344,6 +1344,8 @@ const ecuMessageEditorBusTabs = computed(() => {
         return {
           id,
           name: peer?.name || id,
+          protocols: Array.isArray(peer?.protocols) ? [...peer.protocols] : [],
+          j1939Addresses: Array.isArray(peer?.j1939Addresses) ? [...peer.j1939Addresses] : [],
         };
       }),
     });
