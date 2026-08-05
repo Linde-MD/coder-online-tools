@@ -611,6 +611,8 @@ export function useEcuMessageWorkspace({ ecuRef, busTabsRef }) {
       length: 8,
       factor: 1,
       offset: 0,
+      min: null,
+      max: null,
       signed: false,
       unit: '',
       comment: '',

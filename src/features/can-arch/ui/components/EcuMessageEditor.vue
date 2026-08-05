@@ -534,6 +534,26 @@
             <label>Offset</label>
             <input v-model.number="selectedEntity.entity.offset" class="form-control form-control-sm" type="number" step="any">
 
+            <label>物理最小值</label>
+            <input
+              v-model="selectedEntity.entity.min"
+              class="form-control form-control-sm"
+              type="number"
+              step="any"
+              placeholder="可留空"
+              @blur="onSignalPhysicalLimitBlur(selectedEntity.entity, 'min')"
+            >
+
+            <label>物理最大值</label>
+            <input
+              v-model="selectedEntity.entity.max"
+              class="form-control form-control-sm"
+              type="number"
+              step="any"
+              placeholder="可留空"
+              @blur="onSignalPhysicalLimitBlur(selectedEntity.entity, 'max')"
+            >
+
             <label>Signed</label>
             <label class="form-check-label d-flex align-items-center gap-2">
               <input v-model="selectedEntity.entity.signed" class="form-check-input" type="checkbox">有符号
@@ -1413,6 +1433,17 @@ function onMessageDlcModeChanged(message) {
 function onMessageDlcBlur(message) {
   normalizeMessageDlc(message);
   normalizeMessageSignalLayout(message);
+}
+
+function onSignalPhysicalLimitBlur(signal, key) {
+  if (!signal || (key !== 'min' && key !== 'max')) return;
+  const raw = signal[key];
+  if (raw === '' || raw === null || raw === undefined) {
+    signal[key] = null;
+    return;
+  }
+  const parsed = Number.parseFloat(String(raw).trim());
+  signal[key] = Number.isFinite(parsed) ? parsed : null;
 }
 
 function resolveParticipantName(participantId) {

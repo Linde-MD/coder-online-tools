@@ -6,6 +6,8 @@ export class CanSignal {
     this.length = Number.isInteger(data.length) ? data.length : 8;
     this.factor = Number.isFinite(data.factor) ? data.factor : 1;
     this.offset = Number.isFinite(data.offset) ? data.offset : 0;
+    this.min = Number.isFinite(data.min) ? data.min : null;
+    this.max = Number.isFinite(data.max) ? data.max : null;
     this.signed = Boolean(data.signed);
     this.unit = data.unit ?? '';
     this.comment = data.comment ?? '';
@@ -28,6 +30,8 @@ export class CanSignal {
       length: this.length,
       factor: this.factor,
       offset: this.offset,
+      min: this.min,
+      max: this.max,
       signed: this.signed,
       unit: this.unit,
       comment: this.comment,
