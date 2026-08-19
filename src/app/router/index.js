@@ -8,6 +8,7 @@ function readPreferredRoute() {
     if (value === '/home') return '/home';
     if (value === '/can-arch') return '/can-arch';
     if (value === '/wenyan') return '/wenyan';
+    if (value === '/knowledge-chat') return '/knowledge-chat';
     return '/home';
   } catch (_) {
     return '/home';
@@ -47,6 +48,11 @@ const router = createRouter({
       component: () => import('@/app/pages/WenyanPage.vue'),
     },
     {
+      path: '/knowledge-chat',
+      name: 'knowledge-chat',
+      component: () => import('@/app/pages/KnowledgeChatPage.vue'),
+    },
+    {
       path: '/:pathMatch(.*)*',
       redirect: '/chart',
     },
@@ -55,7 +61,9 @@ const router = createRouter({
 
 router.afterEach((to) => {
   try {
-    const safePath = ['/home', '/chart', '/can-arch', '/wenyan'].includes(to.path) ? to.path : '/home';
+    const safePath = ['/home', '/chart', '/can-arch', '/wenyan', '/knowledge-chat'].includes(to.path)
+      ? to.path
+      : '/home';
     localStorage.setItem(ROUTE_STORAGE_KEY, safePath);
   } catch (_) {
     // Ignore storage errors.

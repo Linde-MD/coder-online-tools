@@ -13,6 +13,7 @@
           <button class="btn btn-outline-primary home-hero-primary" type="button" @click="go('/can-arch')">打开 CAN 架构</button>
           <button class="btn btn-outline-primary" type="button" @click="go('/chart')">打开曲线图</button>
           <button class="btn btn-outline-primary" type="button" @click="go('/wenyan')">打开文言编程</button>
+          <button class="btn btn-outline-primary" type="button" @click="go('/knowledge-chat')">打开知识问答</button>
         </div>
       </div>
 
@@ -31,6 +32,11 @@
           <h2>文言编程</h2>
           <p>代码编辑、帮助文档和古书渲染一体化的实验性工作区。</p>
           <button class="btn btn-sm btn-success" type="button" @click="go('/wenyan')">进入</button>
+        </article>
+        <article class="home-card">
+          <h2>知识库问答</h2>
+          <p>配置私有检索 API 与授权信息，面向企业知识库进行问答与结果回显。</p>
+          <button class="btn btn-sm btn-success" type="button" @click="go('/knowledge-chat')">进入</button>
         </article>
       </div>
     </div>

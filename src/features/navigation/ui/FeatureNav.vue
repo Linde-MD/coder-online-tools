@@ -52,6 +52,16 @@
       >
         文言编程
       </button>
+      <button
+        id="btn-feature-knowledge-chat"
+        class="feature-tab btn btn-sm"
+        :class="isKnowledgeChatRoute ? 'btn-primary active' : 'btn-outline-primary'"
+        type="button"
+        :aria-pressed="isKnowledgeChatRoute ? 'true' : 'false'"
+        @click="goKnowledgeChat"
+      >
+        知识问答
+      </button>
     </div>
   </div>
 </template>
@@ -78,6 +88,7 @@ const isHomeRoute = computed(() => route.path === '/home' || route.path === '/')
 const isWenyanRoute = computed(() => route.path === '/wenyan');
 const isChartRoute = computed(() => route.path === '/chart');
 const isCanArchRoute = computed(() => route.path === '/can-arch');
+const isKnowledgeChatRoute = computed(() => route.path === '/knowledge-chat');
 
 function goHome() {
   if (!isHomeRoute.value) {
@@ -100,6 +111,12 @@ function goCanArch() {
 function goWenyan() {
   if (!isWenyanRoute.value) {
     router.push('/wenyan');
+  }
+}
+
+function goKnowledgeChat() {
+  if (!isKnowledgeChatRoute.value) {
+    router.push('/knowledge-chat');
   }
 }
 
