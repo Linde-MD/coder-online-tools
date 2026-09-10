@@ -6,7 +6,7 @@
           <p class="home-kicker">Coder Online Tools Lab</p>
           <h1 class="home-title">工程工具首页</h1>
           <p class="home-copy">
-            你可以从这里进入 CAN 架构设计、J1939 辅助转换、曲线图和文言编程，快速开始当前工作。
+            你可以从这里进入 CAN 架构设计、J1939 辅助转换、曲线图、文言编程和甘特图工具，快速开始当前工作。
           </p>
         </div>
         <div class="home-hero-actions">
@@ -14,6 +14,7 @@
           <button class="btn btn-outline-primary" type="button" @click="go('/chart')">打开曲线图</button>
           <button class="btn btn-outline-primary" type="button" @click="go('/wenyan')">打开文言编程</button>
           <button class="btn btn-outline-primary" type="button" @click="go('/knowledge-chat')">打开知识问答</button>
+          <button class="btn btn-outline-primary" type="button" @click="go('/tool-gui-gantte')">打开甘特图</button>
         </div>
       </div>
 
@@ -37,6 +38,11 @@
           <h2>知识库问答</h2>
           <p>配置私有检索 API 与授权信息，面向企业知识库进行问答与结果回显。</p>
           <button class="btn btn-sm btn-success" type="button" @click="go('/knowledge-chat')">进入</button>
+        </article>
+        <article class="home-card">
+          <h2>PlantUML 甘特图</h2>
+          <p>通过嵌入式 Gantt Studio 创建、导入、预览并导出 PlantUML 甘特图项目。</p>
+          <button class="btn btn-sm btn-success" type="button" @click="go('/tool-gui-gantte')">进入</button>
         </article>
       </div>
     </div>

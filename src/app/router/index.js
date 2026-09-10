@@ -1,15 +1,12 @@
 import { createRouter, createWebHashHistory } from 'vue-router';
 
 const ROUTE_STORAGE_KEY = 'coderOnlineTools.activeRoute.v1';
+const PERSISTED_ROUTES = ['/home', '/chart', '/can-arch', '/wenyan', '/knowledge-chat', '/tool-gui-gantte'];
 
 function readPreferredRoute() {
   try {
     const value = localStorage.getItem(ROUTE_STORAGE_KEY);
-    if (value === '/home') return '/home';
-    if (value === '/can-arch') return '/can-arch';
-    if (value === '/wenyan') return '/wenyan';
-    if (value === '/knowledge-chat') return '/knowledge-chat';
-    return '/home';
+    return PERSISTED_ROUTES.includes(value) ? value : '/home';
   } catch (_) {
     return '/home';
   }
@@ -53,6 +50,11 @@ const router = createRouter({
       component: () => import('@/app/pages/KnowledgeChatPage.vue'),
     },
     {
+      path: '/tool-gui-gantte',
+      name: 'tool-gui-gantte',
+      component: () => import('@/app/pages/ToolGuiGanttePage.vue'),
+    },
+    {
       path: '/:pathMatch(.*)*',
       redirect: '/chart',
     },
@@ -61,7 +63,7 @@ const router = createRouter({
 
 router.afterEach((to) => {
   try {
-    const safePath = ['/home', '/chart', '/can-arch', '/wenyan', '/knowledge-chat'].includes(to.path)
+    const safePath = PERSISTED_ROUTES.includes(to.path)
       ? to.path
       : '/home';
     localStorage.setItem(ROUTE_STORAGE_KEY, safePath);

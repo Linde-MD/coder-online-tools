@@ -62,6 +62,16 @@
       >
         知识问答
       </button>
+      <button
+        id="btn-feature-tool-gui-gantte"
+        class="feature-tab btn btn-sm"
+        :class="isToolGuiGantteRoute ? 'btn-primary active' : 'btn-outline-primary'"
+        type="button"
+        :aria-pressed="isToolGuiGantteRoute ? 'true' : 'false'"
+        @click="goToolGuiGantte"
+      >
+        甘特图
+      </button>
     </div>
   </div>
 </template>
@@ -89,6 +99,7 @@ const isWenyanRoute = computed(() => route.path === '/wenyan');
 const isChartRoute = computed(() => route.path === '/chart');
 const isCanArchRoute = computed(() => route.path === '/can-arch');
 const isKnowledgeChatRoute = computed(() => route.path === '/knowledge-chat');
+const isToolGuiGantteRoute = computed(() => route.path === '/tool-gui-gantte');
 
 function goHome() {
   if (!isHomeRoute.value) {
@@ -117,6 +128,12 @@ function goWenyan() {
 function goKnowledgeChat() {
   if (!isKnowledgeChatRoute.value) {
     router.push('/knowledge-chat');
+  }
+}
+
+function goToolGuiGantte() {
+  if (!isToolGuiGantteRoute.value) {
+    router.push('/tool-gui-gantte');
   }
 }
 
