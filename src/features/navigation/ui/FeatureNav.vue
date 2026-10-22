@@ -1,77 +1,91 @@
 <template>
   <div class="feature-nav-wrap shadow-sm">
-    <div id="feature-nav" class="feature-nav container-xl py-2 d-flex gap-2 align-items-center">
-      <div class="brand-sigil" aria-hidden="true">
-        <img
-          v-if="brandIconVisible"
-          class="brand-sigil-image"
-          :src="brandIconSrc"
-          alt=""
-          @error="handleBrandIconError"
-        >
-        <span v-else class="brand-sigil-fallback">*</span>
+    <div id="feature-nav" class="feature-nav container-xl">
+      <div class="feature-nav-brand">
+        <div class="brand-sigil" aria-hidden="true">
+          <img
+            v-if="brandIconVisible"
+            class="brand-sigil-image"
+            :src="brandIconSrc"
+            alt=""
+            @error="handleBrandIconError"
+          >
+          <span v-else class="brand-sigil-fallback">*</span>
+        </div>
+        <div class="brand-name">Coder Online Tools Lab</div>
       </div>
-      <div class="brand-name me-auto">Coder Online Tools Lab</div>
-      <button
-        id="btn-feature-home"
-        class="feature-tab btn btn-sm"
-        :class="isHomeRoute ? 'btn-primary active' : 'btn-outline-primary'"
-        type="button"
-        :aria-pressed="isHomeRoute ? 'true' : 'false'"
-        @click="goHome"
-      >
-        首页
-      </button>
-      <button
-        id="btn-feature-chart"
-        class="feature-tab btn btn-sm"
-        :class="isChartRoute ? 'btn-primary active' : 'btn-outline-primary'"
-        type="button"
-        :aria-pressed="isChartRoute ? 'true' : 'false'"
-        @click="goChart"
-      >
-        曲线图
-      </button>
-      <button
-        id="btn-feature-can-arch"
-        class="feature-tab btn btn-sm"
-        :class="isCanArchRoute ? 'btn-primary active' : 'btn-outline-primary'"
-        type="button"
-        :aria-pressed="isCanArchRoute ? 'true' : 'false'"
-        @click="goCanArch"
-      >
-        CAN架构
-      </button>
-      <button
-        id="btn-feature-wenyan"
-        class="feature-tab btn btn-sm"
-        :class="isWenyanRoute ? 'btn-primary active' : 'btn-outline-primary'"
-        type="button"
-        :aria-pressed="isWenyanRoute ? 'true' : 'false'"
-        @click="goWenyan"
-      >
-        文言编程
-      </button>
-      <button
-        id="btn-feature-knowledge-chat"
-        class="feature-tab btn btn-sm"
-        :class="isKnowledgeChatRoute ? 'btn-primary active' : 'btn-outline-primary'"
-        type="button"
-        :aria-pressed="isKnowledgeChatRoute ? 'true' : 'false'"
-        @click="goKnowledgeChat"
-      >
-        知识问答
-      </button>
-      <button
-        id="btn-feature-tool-gui-gantte"
-        class="feature-tab btn btn-sm"
-        :class="isToolGuiGantteRoute ? 'btn-primary active' : 'btn-outline-primary'"
-        type="button"
-        :aria-pressed="isToolGuiGantteRoute ? 'true' : 'false'"
-        @click="goToolGuiGantte"
-      >
-        甘特图
-      </button>
+      <nav class="feature-nav-tabs" aria-label="工具导航">
+        <button
+          id="btn-feature-home"
+          class="feature-tab btn btn-sm"
+          :class="isHomeRoute ? 'btn-primary active' : 'btn-outline-primary'"
+          type="button"
+          :aria-pressed="isHomeRoute ? 'true' : 'false'"
+          @click="goHome"
+        >
+          首页
+        </button>
+        <button
+          id="btn-feature-chart"
+          class="feature-tab btn btn-sm"
+          :class="isChartRoute ? 'btn-primary active' : 'btn-outline-primary'"
+          type="button"
+          :aria-pressed="isChartRoute ? 'true' : 'false'"
+          @click="goChart"
+        >
+          曲线图
+        </button>
+        <button
+          id="btn-feature-can-arch"
+          class="feature-tab btn btn-sm"
+          :class="isCanArchRoute ? 'btn-primary active' : 'btn-outline-primary'"
+          type="button"
+          :aria-pressed="isCanArchRoute ? 'true' : 'false'"
+          @click="goCanArch"
+        >
+          CAN架构
+        </button>
+        <button
+          id="btn-feature-wenyan"
+          class="feature-tab btn btn-sm"
+          :class="isWenyanRoute ? 'btn-primary active' : 'btn-outline-primary'"
+          type="button"
+          :aria-pressed="isWenyanRoute ? 'true' : 'false'"
+          @click="goWenyan"
+        >
+          文言编程
+        </button>
+        <button
+          id="btn-feature-learn-git"
+          class="feature-tab btn btn-sm"
+          :class="isLearnGitRoute ? 'btn-primary active' : 'btn-outline-primary'"
+          type="button"
+          :aria-pressed="isLearnGitRoute ? 'true' : 'false'"
+          @click="goLearnGit"
+        >
+          Git 学习
+        </button>
+        <button
+          id="btn-feature-knowledge-chat"
+          class="feature-tab btn btn-sm"
+          :class="isKnowledgeChatRoute ? 'btn-primary active' : 'btn-outline-primary'"
+          type="button"
+          :aria-pressed="isKnowledgeChatRoute ? 'true' : 'false'"
+          @click="goKnowledgeChat"
+        >
+          知识问答
+        </button>
+        <button
+          id="btn-feature-tool-gui-gantte"
+          class="feature-tab btn btn-sm"
+          :class="isToolGuiGantteRoute ? 'btn-primary active' : 'btn-outline-primary'"
+          type="button"
+          :aria-pressed="isToolGuiGantteRoute ? 'true' : 'false'"
+          @click="goToolGuiGantte"
+        >
+          甘特图
+        </button>
+      </nav>
     </div>
   </div>
 </template>
@@ -100,6 +114,7 @@ const isChartRoute = computed(() => route.path === '/chart');
 const isCanArchRoute = computed(() => route.path === '/can-arch');
 const isKnowledgeChatRoute = computed(() => route.path === '/knowledge-chat');
 const isToolGuiGantteRoute = computed(() => route.path === '/tool-gui-gantte');
+const isLearnGitRoute = computed(() => route.path === '/learn-git');
 
 function goHome() {
   if (!isHomeRoute.value) {
@@ -122,6 +137,12 @@ function goCanArch() {
 function goWenyan() {
   if (!isWenyanRoute.value) {
     router.push('/wenyan');
+  }
+}
+
+function goLearnGit() {
+  if (!isLearnGitRoute.value) {
+    router.push('/learn-git');
   }
 }
 

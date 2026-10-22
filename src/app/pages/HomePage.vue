@@ -6,13 +6,14 @@
           <p class="home-kicker">Coder Online Tools Lab</p>
           <h1 class="home-title">工程工具首页</h1>
           <p class="home-copy">
-            你可以从这里进入 CAN 架构设计、J1939 辅助转换、曲线图、文言编程和甘特图工具，快速开始当前工作。
+            你可以从这里进入 CAN 架构设计、曲线图、文言编程、Git 学习和甘特图等工具，快速开始当前工作。
           </p>
         </div>
         <div class="home-hero-actions">
           <button class="btn btn-outline-primary home-hero-primary" type="button" @click="go('/can-arch')">打开 CAN 架构</button>
           <button class="btn btn-outline-primary" type="button" @click="go('/chart')">打开曲线图</button>
           <button class="btn btn-outline-primary" type="button" @click="go('/wenyan')">打开文言编程</button>
+          <button class="btn btn-outline-primary" type="button" @click="go('/learn-git')">开始学习 Git</button>
           <button class="btn btn-outline-primary" type="button" @click="go('/knowledge-chat')">打开知识问答</button>
           <button class="btn btn-outline-primary" type="button" @click="go('/tool-gui-gantte')">打开甘特图</button>
         </div>
@@ -33,6 +34,11 @@
           <h2>文言编程</h2>
           <p>代码编辑、帮助文档和古书渲染一体化的实验性工作区。</p>
           <button class="btn btn-sm btn-success" type="button" @click="go('/wenyan')">进入</button>
+        </article>
+        <article class="home-card">
+          <h2>Git 学习与练习</h2>
+          <p>通过交互式提交树和关卡练习分支、合并、变基与远程协作。</p>
+          <button class="btn btn-sm btn-success" type="button" @click="go('/learn-git')">进入</button>
         </article>
         <article class="home-card">
           <h2>知识库问答</h2>
