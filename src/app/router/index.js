@@ -1,7 +1,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router';
 
 const ROUTE_STORAGE_KEY = 'coderOnlineTools.activeRoute.v1';
-const PERSISTED_ROUTES = ['/home', '/chart', '/can-arch', '/wenyan', '/learn-git', '/knowledge-chat', '/tool-gui-gantte'];
+const PERSISTED_ROUTES = ['/home', '/chart', '/can-arch', '/wenyan', '/learn-git', '/knowledge-chat', '/tool-gui-gantte', '/material-reader'];
 
 function readPreferredRoute() {
   try {
@@ -53,6 +53,11 @@ const router = createRouter({
       path: '/knowledge-chat',
       name: 'knowledge-chat',
       component: () => import('@/app/pages/KnowledgeChatPage.vue'),
+    },
+    {
+      path: '/material-reader',
+      name: 'material-reader',
+      component: () => import('@/app/pages/MaterialReaderPage.vue'),
     },
     {
       path: '/tool-gui-gantte',

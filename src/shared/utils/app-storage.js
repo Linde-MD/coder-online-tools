@@ -2,6 +2,10 @@ import Dexie from 'dexie';
 
 export const appDatabase = new Dexie('coderOnlineTools');
 appDatabase.version(1).stores({ settings: '&key' });
+appDatabase.version(2).stores({
+  settings: '&key',
+  directoryHandles: '&key',
+});
 
 export async function readStoredValue(key, { legacyKeys = [], parse = JSON.parse } = {}) {
   const record = await appDatabase.table('settings').get(key);

@@ -76,6 +76,16 @@
           知识问答
         </button>
         <button
+          id="btn-feature-material-reader"
+          class="feature-tab btn btn-sm"
+          :class="isMaterialReaderRoute ? 'btn-primary active' : 'btn-outline-primary'"
+          type="button"
+          :aria-pressed="isMaterialReaderRoute ? 'true' : 'false'"
+          @click="goMaterialReader"
+        >
+          材料阅读
+        </button>
+        <button
           id="btn-feature-tool-gui-gantte"
           class="feature-tab btn btn-sm"
           :class="isToolGuiGantteRoute ? 'btn-primary active' : 'btn-outline-primary'"
@@ -113,6 +123,7 @@ const isWenyanRoute = computed(() => route.path === '/wenyan');
 const isChartRoute = computed(() => route.path === '/chart');
 const isCanArchRoute = computed(() => route.path === '/can-arch');
 const isKnowledgeChatRoute = computed(() => route.path === '/knowledge-chat');
+const isMaterialReaderRoute = computed(() => route.path === '/material-reader');
 const isToolGuiGantteRoute = computed(() => route.path === '/tool-gui-gantte');
 const isLearnGitRoute = computed(() => route.path === '/learn-git');
 
@@ -149,6 +160,12 @@ function goLearnGit() {
 function goKnowledgeChat() {
   if (!isKnowledgeChatRoute.value) {
     router.push('/knowledge-chat');
+  }
+}
+
+function goMaterialReader() {
+  if (!isMaterialReaderRoute.value) {
+    router.push('/material-reader');
   }
 }
 

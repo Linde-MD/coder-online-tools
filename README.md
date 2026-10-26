@@ -16,6 +16,7 @@
 | 曲线图 | `#/chart` | 曲线组、JavaScript/DSL 公式、D3 SVG 渲染和显示设置。 |
 | 文言编程 | `#/wenyan` | Monaco 编辑、JS/Python 编译、程序运行和古书 SVG 渲染。 |
 | 知识库问答 | `#/knowledge-chat` | 用户配置 HTTP 检索 API、Authorization、提示词和 Top K，显示回答与检索片段。 |
+| 材料阅读 | `#/material-reader` | 读取用户授权的本地 bookshelf 目录，预览 learn-from-materials 生成的互动 HTML 与 Markdown。 |
 
 `#/j1939` 是兼容入口，当前会重定向至 `#/can-arch`；J1939 ID/PGN 换算作为 CAN 架构相关辅助能力提供。
 
@@ -46,6 +47,12 @@
 1. 在 `#/knowledge-chat` 的“连接设置”填写检索 API URL 和 Authorization。只填写令牌时，客户端按 `Bearer <token>` 发送。
 2. 可选填写检索提示词，选择是否拼接到 query，并将 Top K 设置在 1-20。
 3. 输入问题后按 `Ctrl+Enter` 或发送按钮提交。连接信息仅保存在当前浏览器；请求从浏览器直接发往该 API，因此目标服务必须允许 CORS。
+
+### 材料阅读
+
+1. 使用 learn-from-materials 生成学习成果后，将每份材料的 HTML/Markdown 交付文件分别放入一个成果文件夹。
+2. 打开 `#/material-reader`，首次点击“选择成果文件夹”，选择 `bookshelf` 并授权读取。浏览器会保存目录句柄；后续访问会尝试自动扫描，权限失效时按提示重新授权。
+3. 从列表选择材料和 HTML 或 Markdown 文件进行预览。可选择浏览器全屏，或放大到应用导航栏下方阅读。该功能只读取和渲染已生成的成果，不处理原材料，也不运行 Copilot CLI；HTML 在受限 iframe 中显示，可能无法使用依赖浏览器本地存储的功能。
 
 ## 技术栈与数据边界
 
