@@ -19,6 +19,14 @@
           <span>Git 分支练习</span>
         </div>
         <div class="learn-git-frame-tools">
+          <button
+            v-if="isSandboxMode"
+            class="learn-git-fullscreen-button learn-git-sandbox-button"
+            type="button"
+            @click="exitSandbox"
+          >
+            返回关卡
+          </button>
           <p v-if="externalNavigationNotice" class="learn-git-notice" role="status">
             {{ externalNavigationNotice }}
           </p>
@@ -47,7 +55,7 @@
         ref="learnGitFrame"
         class="learn-git-frame"
         title="交互式 Git 分支练习器"
-        :src="appUrl"
+        :src="frameUrl"
         loading="eager"
         referrerpolicy="no-referrer"
         @load="attachFrameKeyboardShortcut"
@@ -62,6 +70,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 const basePath = String(import.meta.env.BASE_URL || '/');
 const normalizedBasePath = basePath.endsWith('/') ? basePath : `${basePath}/`;
 const appUrl = `${normalizedBasePath}learn-git-branching/index.html?locale=zh_CN`;
+const frameUrl = ref(appUrl);
 const frameShell = ref(null);
 const learnGitFrame = ref(null);
 const isFullscreen = ref(false);
@@ -70,6 +79,9 @@ const externalNavigationNotice = ref('');
 let frameWindow = null;
 let frameDocument = null;
 let noticeTimeout = 0;
+const isSandboxMode = computed(() => (
+  new URL(frameUrl.value, window.location.href).searchParams.has('NODEMO')
+));
 
 const fullscreenButtonLabel = computed(() => (
   isFullscreen.value ? '退出全屏（F11 或 Esc）' : '进入全屏（F11）'
@@ -122,10 +134,33 @@ function handleExternalFrameNavigation(event) {
   if (!anchor) return;
 
   const destination = new URL(anchor.href, frameDocument?.baseURI);
+  if (destination.searchParams.has('NODEMO')) {
+    const localSandboxUrl = new URL(appUrl, window.location.href);
+    const locale = destination.searchParams.get('locale') || 'zh_CN';
+    localSandboxUrl.search = `${new URLSearchParams({ locale }).toString()}&NODEMO`;
+    frameUrl.value = localSandboxUrl.href;
+    externalNavigationNotice.value = '已在本地学习器中打开沙盒模式。';
+    event.preventDefault();
+    window.clearTimeout(noticeTimeout);
+    noticeTimeout = window.setTimeout(() => {
+      externalNavigationNotice.value = '';
+    }, 5000);
+    return;
+  }
+
   if (destination.origin === window.location.origin) return;
 
   event.preventDefault();
   externalNavigationNotice.value = '外部页面跳转已关闭，学习内容可在此页面继续使用。';
+  window.clearTimeout(noticeTimeout);
+  noticeTimeout = window.setTimeout(() => {
+    externalNavigationNotice.value = '';
+  }, 5000);
+}
+
+function exitSandbox() {
+  frameUrl.value = appUrl;
+  externalNavigationNotice.value = '已退出沙盒，返回关卡模式。';
   window.clearTimeout(noticeTimeout);
   noticeTimeout = window.setTimeout(() => {
     externalNavigationNotice.value = '';
@@ -311,8 +346,9 @@ onBeforeUnmount(() => {
 }
 
 .learn-git-notice {
-  background: #e6efe7;
-  color: #345f43;
+  border: 1px solid rgba(204, 120, 92, 0.24);
+  background: #f5e8de;
+  color: #754532;
 }
 
 .learn-git-fullscreen-button {
@@ -335,6 +371,18 @@ onBeforeUnmount(() => {
   background: #fffaf3;
   outline: 2px solid rgba(204, 120, 92, 0.36);
   outline-offset: 2px;
+}
+
+.learn-git-sandbox-button {
+  border-color: rgba(204, 120, 92, 0.45);
+  background: #f5e8de;
+  color: #754532;
+}
+
+.learn-git-sandbox-button:hover,
+.learn-git-sandbox-button:focus-visible {
+  border-color: var(--color-primary-active);
+  background: #efd8c8;
 }
 
 .learn-git-fullscreen-button svg {
