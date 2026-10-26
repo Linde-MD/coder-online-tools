@@ -201,7 +201,21 @@
             <button type="button" class="btn btn-outline-secondary btn-sm" @click="closeHelpModal">关闭</button>
           </div>
           <div class="wenyan-help-modal-body">
-            <article class="wenyan-help-doc" v-html="renderedHelpHtml"></article>
+            <nav class="wenyan-help-toc" aria-label="帮助目录">
+              <span class="wenyan-help-toc-title">目录</span>
+              <button
+                v-for="section in helpSections"
+                :key="section.id"
+                type="button"
+                class="wenyan-help-toc-link"
+                :class="{ active: activeHelpSection === section.id }"
+                :aria-current="activeHelpSection === section.id ? 'location' : undefined"
+                @click="scrollToHelpSection(section.id)"
+              >
+                {{ section.label }}
+              </button>
+            </nav>
+            <article ref="helpDoc" class="wenyan-help-doc" v-html="renderedHelpHtml"></article>
           </div>
         </div>
       </div>
@@ -215,6 +229,8 @@ import * as monaco from 'monaco-editor/editor/editor.api';
 import editorWorker from 'monaco-editor/editor/editor.worker?worker';
 import { marked } from 'marked';
 import wenyanSyntaxHelpMarkdown from '../docs/wenyan-syntax-help.md?raw';
+import { analyzeWenyanSource, createWenyanErrorMarker } from '../services/wenyan-diagnostics.js';
+import { registerWenyanLanguage, setWenyanCompletionKeywords, WENYAN_LANGUAGE_ID } from '../services/wenyan-language.js';
 import { readWenyanScripts, saveWenyanScripts } from '../services/wenyan-storage.js';
 
 defineProps({
@@ -366,6 +382,8 @@ const helpModalOpen = ref(false);
 const renderZoom = ref(1.3);
 const renderPageIndex = ref(0);
 const copyStatus = ref('');
+const activeHelpSection = ref('getting-started');
+const helpDoc = ref(null);
 const paneRatios = ref([0.2, 0.42, 0.38]);
 const cardHeight = ref(560);
 const hostWidth = ref(0);
@@ -377,6 +395,7 @@ let monacoEditor = null;
 let applyingEditorContent = false;
 let resizeObserver = null;
 let dragState = null;
+let diagnosticsTimer = null;
 
 const SPLITTER_WIDTH = 10;
 const MIN_PANE_WIDTH = 220;
@@ -419,11 +438,36 @@ const wenyanCardStyle = computed(() => {
     height: `${cardHeight.value}px`,
   };
 });
-const renderedHelpHtml = computed(() => marked.parse(wenyanSyntaxHelpMarkdown, {
-  async: false,
-  gfm: true,
-  breaks: true,
-}));
+const helpSections = [
+  { id: 'getting-started', label: '快速开始' },
+  { id: 'statement-basics', label: '基本语句与命名' },
+  { id: 'types-and-values', label: '数据类型与字面值' },
+  { id: 'operators', label: '运算与比较' },
+  { id: 'conditions', label: '条件判断' },
+  { id: 'loops', label: '循环控制' },
+  { id: 'functions', label: '术：定义与调用' },
+  { id: 'lists', label: '列表与索引' },
+  { id: 'diagnostics', label: '编译与错误提示' },
+  { id: 'complete-example', label: '完整示例' },
+];
+const helpMarkdownRenderer = new marked.Renderer();
+let helpHeadingIndex = 0;
+helpMarkdownRenderer.heading = function renderHelpHeading(token) {
+  const title = this.parser.parseInline(token.tokens);
+  const section = helpSections.find(item => item.label === title);
+  const id = section?.id || `wenyan-help-heading-${helpHeadingIndex}`;
+  helpHeadingIndex += 1;
+  return `<h${token.depth} id="${id}">${title}</h${token.depth}>\n`;
+};
+const renderedHelpHtml = computed(() => {
+  helpHeadingIndex = 0;
+  return marked.parse(wenyanSyntaxHelpMarkdown, {
+    async: false,
+    gfm: true,
+    breaks: true,
+    renderer: helpMarkdownRenderer,
+  });
+});
 
 function createDefaultScripts() {
   return BUILTIN_SCRIPTS.map(item => ({ ...item }));
@@ -534,13 +578,15 @@ watch(sourceCode, (value) => {
   currentScript.value.source = String(value || '');
   persistScripts();
 
-  if (!monacoEditor) return;
-  const nextValue = String(value || '');
-  if (monacoEditor.getValue() === nextValue) return;
-
-  applyingEditorContent = true;
-  monacoEditor.setValue(nextValue);
-  applyingEditorContent = false;
+  if (monacoEditor) {
+    const nextValue = String(value || '');
+    if (monacoEditor.getValue() !== nextValue) {
+      applyingEditorContent = true;
+      monacoEditor.setValue(nextValue);
+      applyingEditorContent = false;
+    }
+  }
+  scheduleWenyanDiagnostics();
 });
 
 function initializeMonacoTheme() {
@@ -550,6 +596,10 @@ function initializeMonacoTheme() {
     rules: [
       { token: 'comment', foreground: '7A7269' },
       { token: 'string', foreground: '7F4B34' },
+      { token: 'keyword', foreground: 'A9583E', fontStyle: 'bold' },
+      { token: 'number', foreground: '557B61' },
+      { token: 'variable', foreground: '8664A3' },
+      { token: 'delimiter', foreground: '8A7665' },
     ],
     colors: {
       'editor.background': '#FFF9F2',
@@ -576,10 +626,11 @@ function initializeMonacoEditor() {
 
   root.MonacoEnvironment.getWorker = () => new editorWorker();
 
+  registerWenyanLanguage(monaco);
   initializeMonacoTheme();
   monacoEditor = monaco.editor.create(monacoEditorHost.value, {
     value: sourceCode.value,
-    language: 'plaintext',
+    language: WENYAN_LANGUAGE_ID,
     theme: 'wenyan-warm',
     automaticLayout: true,
     minimap: { enabled: false },
@@ -597,7 +648,49 @@ function initializeMonacoEditor() {
   monacoEditor.onDidChangeModelContent(() => {
     if (applyingEditorContent) return;
     sourceCode.value = monacoEditor.getValue();
+    scheduleWenyanDiagnostics();
   });
+}
+
+function updateWenyanDiagnostics() {
+  if (!wenyanCore || !monacoEditor) return [];
+  const model = monacoEditor.getModel();
+  if (!model) return [];
+
+  let markers;
+  try {
+    markers = analyzeWenyanSource(wenyanCore, monacoEditor.getValue());
+  } catch (error) {
+    markers = [createWenyanErrorMarker(error?.message, monacoEditor.getValue())];
+  }
+  monaco.editor.setModelMarkers(model, 'wenyan', markers);
+
+  if (!isBusy.value) {
+    runtimeStatus.value = markers.length
+      ? `发现 ${markers.length} 处语法问题，请查看编辑器标记。`
+      : '文言语法检查通过。';
+    runtimeStatusLevel.value = markers.length ? 'error' : 'normal';
+  }
+  return markers;
+}
+
+function scheduleWenyanDiagnostics() {
+  if (diagnosticsTimer !== null) {
+    window.clearTimeout(diagnosticsTimer);
+  }
+  diagnosticsTimer = window.setTimeout(() => {
+    diagnosticsTimer = null;
+    updateWenyanDiagnostics();
+  }, 350);
+}
+
+function setCompileErrorMarker(message) {
+  if (!wenyanCore || !monacoEditor) return;
+  const model = monacoEditor.getModel();
+  if (!model) return;
+  monaco.editor.setModelMarkers(model, 'wenyan', [
+    createWenyanErrorMarker(message, monacoEditor.getValue()),
+  ]);
 }
 
 function recalcLayout() {
@@ -998,18 +1091,22 @@ async function compileAll() {
   try {
     await ensureRuntime();
 
+    if (updateWenyanDiagnostics().length > 0) {
+      throw new Error('请先修正编辑器中标记的文言语法。');
+    }
+
     let compileError = '';
     const compiledJs = wenyanCore.compile(
       sourceCode.value,
       getCompileOptions('js', (msg) => {
         compileError = msg;
+        setCompileErrorMarker(msg);
       }),
     );
 
     if (compileError) {
       throw new Error(compileError);
     }
-
     const compiledPyRaw = wenyanCore.compile(
       sourceCode.value,
       getCompileOptions('py', () => {
@@ -1037,18 +1134,22 @@ async function runProgram() {
   try {
     await ensureRuntime();
 
+    if (updateWenyanDiagnostics().length > 0) {
+      throw new Error('请先修正编辑器中标记的文言语法。');
+    }
+
     let compileError = '';
     const compiledJs = wenyanCore.compile(
       sourceCode.value,
       getCompileOptions('js', (msg) => {
         compileError = msg;
+        setCompileErrorMarker(msg);
       }),
     );
 
     if (compileError) {
       throw new Error(compileError);
     }
-
     const outputLines = [];
     wenyanCore.evalCompiled(compiledJs, {
       lang: 'js',
@@ -1113,6 +1214,13 @@ function openHelpModal() {
 
 function closeHelpModal() {
   helpModalOpen.value = false;
+}
+
+function scrollToHelpSection(sectionId) {
+  activeHelpSection.value = sectionId;
+  const section = helpDoc.value?.querySelector(`#${sectionId}`);
+  if (!section || !helpDoc.value) return;
+  helpDoc.value.scrollTo({ top: section.offsetTop, behavior: 'smooth' });
 }
 
 function handleDocumentKeydown(event) {
@@ -1194,6 +1302,8 @@ onMounted(async () => {
 
   try {
     await ensureRuntime();
+    setWenyanCompletionKeywords(Object.keys(wenyanCore.KEYWORDS || {}));
+    updateWenyanDiagnostics();
     runtimeStatus.value = 'Wenyan 运行时已就绪。';
     await compileAll();
   } catch (error) {
@@ -1204,6 +1314,10 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   disposed = true;
+  if (diagnosticsTimer !== null) {
+    window.clearTimeout(diagnosticsTimer);
+    diagnosticsTimer = null;
+  }
   stopDrag();
   window.removeEventListener('keydown', handleDocumentKeydown);
   if (resizeObserver) {

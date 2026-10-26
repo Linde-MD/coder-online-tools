@@ -3448,17 +3448,76 @@ body.theme-warm-editorial {
 }
 
 .wenyan-help-modal-body {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
     flex: 1;
     min-height: 0;
-    overflow: auto;
-    padding: 16px;
+    overflow: hidden;
     background: linear-gradient(180deg, #fffefb 0%, #f9f1e8 100%);
 }
 
+.wenyan-help-toc {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-height: 0;
+    overflow: auto;
+    padding: 16px 12px;
+    border-right: 1px solid var(--color-hairline);
+    background: rgba(245, 240, 232, 0.72);
+}
+
+.wenyan-help-toc-title {
+    padding: 0 10px 8px;
+    color: var(--color-muted);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+}
+
+.wenyan-help-toc-link {
+    width: 100%;
+    border: 0;
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    background: transparent;
+    color: var(--color-body);
+    text-align: left;
+    font-size: 13px;
+    line-height: 1.45;
+    cursor: pointer;
+}
+
+.wenyan-help-toc-link:hover {
+    background: rgba(204, 120, 92, 0.1);
+    color: var(--color-primary-active);
+}
+
+.wenyan-help-toc-link.active {
+    background: rgba(204, 120, 92, 0.16);
+    color: var(--color-primary-active);
+    font-weight: 700;
+}
+
+.wenyan-help-toc-link:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 1px;
+}
+
 .wenyan-help-doc {
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    padding: 16px 20px;
     color: #2f2924;
     font-size: 14px;
     line-height: 1.7;
+}
+
+.wenyan-help-doc h1,
+.wenyan-help-doc h2,
+.wenyan-help-doc h3 {
+    scroll-margin-top: 16px;
 }
 
 .wenyan-help-doc h1,
@@ -3746,6 +3805,37 @@ body.theme-warm-editorial {
     .wenyan-help-modal-card {
         width: 100%;
         height: 92vh;
+    }
+
+    .wenyan-help-modal-body {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .wenyan-help-toc {
+        flex-direction: row;
+        align-items: center;
+        gap: 6px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 8px 10px;
+        border-right: 0;
+        border-bottom: 1px solid var(--color-hairline);
+    }
+
+    .wenyan-help-toc-title {
+        flex: 0 0 auto;
+        padding: 0 4px;
+    }
+
+    .wenyan-help-toc-link {
+        flex: 0 0 auto;
+        width: auto;
+        white-space: nowrap;
+    }
+
+    .wenyan-help-doc {
+        padding: 12px 14px;
     }
 
     .j1939-grid {
