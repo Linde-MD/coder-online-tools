@@ -129,6 +129,13 @@ function handleFullscreenShortcut(event) {
   }
 }
 
+function navigateFrameInternally(url) {
+  if (frameWindow) {
+    frameWindow.__learnGitInternalNavigation = true;
+  }
+  frameUrl.value = url;
+}
+
 function handleExternalFrameNavigation(event) {
   const anchor = event.target?.closest?.('a[href]');
   if (!anchor) return;
@@ -136,9 +143,11 @@ function handleExternalFrameNavigation(event) {
   const destination = new URL(anchor.href, frameDocument?.baseURI);
   if (destination.searchParams.has('NODEMO')) {
     const localSandboxUrl = new URL(appUrl, window.location.href);
-    const locale = destination.searchParams.get('locale') || 'zh_CN';
+    const locale = destination.searchParams.get('locale')
+      || new URLSearchParams(frameDocument?.location.search).get('locale')
+      || 'zh_CN';
     localSandboxUrl.search = `${new URLSearchParams({ locale }).toString()}&NODEMO`;
-    frameUrl.value = localSandboxUrl.href;
+    navigateFrameInternally(localSandboxUrl.href);
     externalNavigationNotice.value = '已在本地学习器中打开沙盒模式。';
     event.preventDefault();
     window.clearTimeout(noticeTimeout);
@@ -159,7 +168,7 @@ function handleExternalFrameNavigation(event) {
 }
 
 function exitSandbox() {
-  frameUrl.value = appUrl;
+  navigateFrameInternally(appUrl);
   externalNavigationNotice.value = '已退出沙盒，返回关卡模式。';
   window.clearTimeout(noticeTimeout);
   noticeTimeout = window.setTimeout(() => {
@@ -202,10 +211,10 @@ onBeforeUnmount(() => {
   gap: 16px;
   width: 100%;
   max-width: 1680px;
-  height: calc(100dvh - 164px);
-  min-height: 460px;
+  height: calc(100dvh - 112px);
+  min-height: 0;
   margin: 0 auto;
-  padding: 20px clamp(16px, 3vw, 40px) 28px;
+  padding: 20px clamp(16px, 3vw, 40px) 0;
 }
 
 .learn-git-intro {
@@ -404,9 +413,9 @@ onBeforeUnmount(() => {
 
 @media (max-width: 768px) {
   .learn-git-page {
-    height: calc(100dvh - 176px);
-    min-height: 420px;
-    padding: 14px 12px 20px;
+    height: calc(100dvh - 112px);
+    min-height: 0;
+    padding: 14px 12px 0;
   }
 
   .learn-git-intro {
