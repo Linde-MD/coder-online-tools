@@ -1,3 +1,3 @@
 export { HistoryManager } from './HistoryManager.js';
-export { LocalStorageRepository } from './LocalStorageRepository.js';
+export { DexieRepository } from './DexieRepository.js';
 export { PointerDragController } from './PointerDragController.js';

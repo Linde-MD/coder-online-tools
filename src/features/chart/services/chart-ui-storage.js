@@ -1,16 +1,11 @@
 import { normalizeGroupDisplaySettings } from '@/features/chart/services/curve-groups-model.js';
+import { readStoredValue, writeStoredValue } from '@/shared/utils/app-storage.js';
 
 export const CHART_UI_STORAGE_KEY = 'coderOnlineTools.chartUiState.v1';
 
-export function readChartUiStateFromStorage(storageKey = CHART_UI_STORAGE_KEY) {
-  try {
-    const raw = localStorage.getItem(storageKey);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed : null;
-  } catch (_) {
-    return null;
-  }
+export async function readChartUiStateFromStorage(storageKey = CHART_UI_STORAGE_KEY) {
+  const parsed = await readStoredValue(storageKey);
+  return parsed && typeof parsed === 'object' ? parsed : null;
 }
 
 export function applyChartUiStateToConfig(chartConfig, state) {
@@ -40,7 +35,7 @@ export function applyChartUiStateToConfig(chartConfig, state) {
   }
 }
 
-export function saveChartUiState(chartConfig, curveGroups, storageKey = CHART_UI_STORAGE_KEY) {
+export async function saveChartUiState(chartConfig, curveGroups, storageKey = CHART_UI_STORAGE_KEY) {
   try {
     const payload = {
       curveGroups: Array.isArray(curveGroups)
@@ -51,8 +46,8 @@ export function saveChartUiState(chartConfig, curveGroups, storageKey = CHART_UI
         : [],
     };
 
-    localStorage.setItem(storageKey, JSON.stringify(payload));
-  } catch (_) {
-    // Ignore localStorage errors to avoid affecting render flow.
+    await writeStoredValue(storageKey, payload);
+  } catch (error) {
+    console.warn('Unable to save chart settings', error);
   }
 }

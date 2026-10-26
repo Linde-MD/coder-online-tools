@@ -1,5 +1,5 @@
 <template>
-  <section id="feature-can-arch" class="feature-panel" :class="panelClassList">
+  <section id="feature-can-arch" class="feature-panel" :class="panelClassList" :inert="!storageReady">
     <div class="can-arch-panel container-xl">
       <div class="can-arch-header">
         <div>
@@ -997,6 +997,11 @@ import {
 import { escapeXml } from '@/features/can-arch/domain/can-arch-xml.js';
 import { useMagneticHeader } from '@/features/can-arch/app/composables/useMagneticHeader.js';
 import { useNodeOperations } from '@/features/can-arch/app/composables/useNodeOperations.js';
+import { DexieRepository } from '@/features/can-arch/infra/DexieRepository.js';
+
+const topologyRepository = new DexieRepository(STORAGE_KEY);
+const storageReady = ref(false);
+let disposed = false;
 
 const props = defineProps({
   active: {
@@ -2082,17 +2087,19 @@ function normalizeBusColor(value, fallback = BUS_COLOR_POOL[0]) {
   return normalizeNodeBaseColor(value, fallback);
 }
 
-function persistNodesNow() {
+async function persistNodesNow() {
+  if (!storageReady.value) return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    const pendingWrite = topologyRepository.save({
       nodes: cloneNodesSnapshot(nodes.value),
       buses: cloneBusesSnapshot(buses.value),
       links: cloneLinksSnapshot(links.value),
-    }));
+    });
     lastPersistAt = Date.now();
     persistPending = false;
-  } catch (_) {
-    // Ignore storage errors.
+    await pendingWrite;
+  } catch (error) {
+    setStatus(`架构保存失败：${error?.message || '存储不可用'}`, true);
   }
 }
 
@@ -2266,27 +2273,27 @@ function redoNodes() {
   applyHistoryState(next, '已重做上一步操作。');
 }
 
-function loadNodes() {
+async function loadNodes() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
+    const payload = await topologyRepository.load();
+    if (!payload) {
       nodes.value = [];
       buses.value = [];
       links.value = [];
       selectedLinkId.value = '';
       return;
     }
-    const payload = JSON.parse(raw);
     const snapshot = extractTopologyFromConfigPayload(payload);
     nodes.value = hydrateNodes(snapshot.nodes, { nextNodePosition });
     buses.value = hydrateBuses(snapshot.buses, { nextBusPosition });
     links.value = hydrateLinks(snapshot.links, nodes.value, buses.value);
     selectedLinkId.value = '';
-  } catch (_) {
+  } catch (error) {
     nodes.value = [];
     buses.value = [];
     links.value = [];
     selectedLinkId.value = '';
+    throw error;
   }
 }
 
@@ -4226,8 +4233,15 @@ function handleDocumentKeydown(event) {
   }
 }
 
-onMounted(() => {
-  loadNodes();
+onMounted(async () => {
+  try {
+    await loadNodes();
+  } catch (error) {
+    setStatus(`架构读取失败，请刷新重试：${error?.message || '存储不可用'}`, true);
+    return;
+  }
+  if (disposed) return;
+  storageReady.value = true;
   setStatus('CAN 节点设计器已就绪。');
   window.addEventListener('pointerdown', onDocumentPointerDown);
   window.addEventListener('keydown', handleDocumentKeydown);
@@ -4240,6 +4254,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  disposed = true;
   onDragPointerUp();
   finishBusDrag();
   onLinkAnchorPointerUp();
@@ -4249,6 +4264,7 @@ onBeforeUnmount(() => {
   stopBoxSelection();
   closeContextMenu();
   stopPersistThrottleTimer();
+  if (persistPending) persistNodesNow();
   stopDraftApplyTimer();
   if (busDraftApplyTimerId) {
     window.clearTimeout(busDraftApplyTimerId);

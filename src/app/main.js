@@ -13,11 +13,11 @@ import {
   saveChartUiState,
 } from '@/features/chart/services';
 
-applyChartUiStateToConfig(chartConfig, readChartUiStateFromStorage());
-
 let curveGroups = buildInitialGroups(chartConfig);
 let chartInitialized = false;
+let chartInitialization = null;
 let j1939Initialized = false;
+let j1939Initialization = null;
 
 function triggerRedraw() {
   const sampleCount = chartConfig.formulaSampleCount || 200;
@@ -40,20 +40,28 @@ function triggerRedraw() {
   drawChart(options);
 }
 
-export function initializeChartModule() {
+export async function initializeChartModule() {
   if (chartInitialized) {
     triggerRedraw();
     return;
   }
 
-  chartInitialized = true;
-  initForm(chartConfig, curveGroups, triggerRedraw);
-  initResize(curveGroups, triggerRedraw);
-  triggerRedraw();
+  if (!chartInitialization) {
+    chartInitialization = (async () => {
+      applyChartUiStateToConfig(chartConfig, await readChartUiStateFromStorage());
+      curveGroups = buildInitialGroups(chartConfig);
+      initForm(chartConfig, curveGroups, triggerRedraw);
+      initResize(curveGroups, triggerRedraw);
+      chartInitialized = true;
+      triggerRedraw();
+    })();
+  }
+  await chartInitialization;
 }
 
-export function initializeJ1939Module() {
+export async function initializeJ1939Module() {
   if (j1939Initialized) return;
+  if (!j1939Initialization) j1939Initialization = initJ1939Tool();
+  await j1939Initialization;
   j1939Initialized = true;
-  initJ1939Tool();
 }

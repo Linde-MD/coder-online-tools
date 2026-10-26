@@ -1,3 +1,5 @@
+import { readStoredValue, writeStoredValue } from '@/shared/utils/app-storage.js';
+
 const FORMULA_STORAGE_KEY = 'chartFormulaFunctionSources';
 const JS_RESERVED_WORDS = new Set([
   'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default', 'delete',
@@ -74,20 +76,17 @@ export function ensureFormulaSourceCount(sourceList, curveCount) {
   return next;
 }
 
-export function loadFormulaSourceList(curveCount = 1, fallbackText = '') {
-  const saved = localStorage.getItem(FORMULA_STORAGE_KEY);
-  if (saved && saved.trim()) {
-    try {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed)) {
-        return ensureFormulaSourceCount(
-          parsed.map(item => String(item || '').trim()).filter(Boolean),
-          curveCount,
-        );
-      }
-    } catch (error) {
-      // ignore corrupted storage and fall back to other sources
+export async function loadFormulaSourceList(curveCount = 1, fallbackText = '') {
+  try {
+    const parsed = await readStoredValue(FORMULA_STORAGE_KEY);
+    if (Array.isArray(parsed)) {
+      return ensureFormulaSourceCount(
+        parsed.map(item => String(item || '').trim()).filter(Boolean),
+        curveCount,
+      );
     }
+  } catch (error) {
+    console.warn('Unable to load formula sources', error);
   }
 
   if (fallbackText && fallbackText.trim()) {
@@ -103,8 +102,8 @@ export function loadFormulaSourceList(curveCount = 1, fallbackText = '') {
   return ensureFormulaSourceCount([], curveCount);
 }
 
-export function saveFormulaSourceList(sourceList) {
-  localStorage.setItem(FORMULA_STORAGE_KEY, JSON.stringify(sourceList));
+export async function saveFormulaSourceList(sourceList) {
+  await writeStoredValue(FORMULA_STORAGE_KEY, sourceList);
 }
 
 export function parseSingleFormulaFunction(functionSource) {

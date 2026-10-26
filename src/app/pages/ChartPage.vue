@@ -1,4 +1,5 @@
 <template>
+  <p v-if="initializationError" class="container-xl text-red-700" role="alert">{{ initializationError }}</p>
   <ChartFeature :active="true" />
 </template>
 
@@ -6,5 +7,5 @@
 import { ChartFeature } from '@/features/chart';
 import { useChartModuleInit } from '@/app/composables/useChartModuleInit.js';
 
-useChartModuleInit();
+const { initializationError } = useChartModuleInit();
 </script>

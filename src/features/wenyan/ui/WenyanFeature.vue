@@ -1,6 +1,6 @@
 <template>
   <section id="feature-wenyan" class="feature-panel" :class="{ active }">
-    <div class="wenyan-panel container-xl">
+    <div class="wenyan-panel container-xl" :inert="!storageReady">
       <div
         ref="wenyanResizeHost"
         class="wenyan-grid wenyan-grid-resizable"
@@ -215,6 +215,7 @@ import * as monaco from 'monaco-editor/editor/editor.api';
 import editorWorker from 'monaco-editor/editor/editor.worker?worker';
 import { marked } from 'marked';
 import wenyanSyntaxHelpMarkdown from '../docs/wenyan-syntax-help.md?raw';
+import { readWenyanScripts, saveWenyanScripts } from '../services/wenyan-storage.js';
 
 defineProps({
   active: {
@@ -317,7 +318,6 @@ const SAMPLE_HV_WORKFLOW_CODE = `吾有一言。曰「「訊號約定：大於�
 施「高壓上電判定」於零。於零。於零。於零。名之曰「狀態丁」。
 夫「狀態丁」。書之。`;
 
-const SCRIPT_STORAGE_KEY = 'coderOnlineTools.wenyanScripts.v1';
 const BUILTIN_SCRIPTS = [
   {
     id: 'sample-hello',
@@ -346,6 +346,8 @@ const BUILTIN_SCRIPTS = [
 ];
 
 const scripts = ref([]);
+const storageReady = ref(false);
+let disposed = false;
 const activeScriptId = ref('');
 const sourceCode = ref('');
 const monacoEditorHost = ref(null);
@@ -452,18 +454,8 @@ function hydrateScripts(rawScripts = []) {
   return normalized.length > 0 ? normalized : createDefaultScripts();
 }
 
-function readPersistedScripts() {
-  try {
-    const raw = localStorage.getItem(SCRIPT_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed : null;
-  } catch (_) {
-    return null;
-  }
-}
-
-function persistScripts() {
+async function persistScripts() {
+  if (!storageReady.value) return;
   try {
     const payload = {
       activeScriptId: activeScriptId.value,
@@ -474,14 +466,15 @@ function persistScripts() {
         isBuiltin: item.isBuiltin,
       })),
     };
-    localStorage.setItem(SCRIPT_STORAGE_KEY, JSON.stringify(payload));
-  } catch (_) {
-    // Ignore storage failures.
+    await saveWenyanScripts(payload);
+  } catch (error) {
+    runtimeStatus.value = `脚本保存失败：${error?.message || '存储不可用'}`;
+    runtimeStatusLevel.value = 'error';
   }
 }
 
-function initializeScripts() {
-  const persisted = readPersistedScripts();
+async function initializeScripts() {
+  const persisted = await readWenyanScripts();
   const hydrated = hydrateScripts(persisted?.scripts || createDefaultScripts());
   scripts.value = hydrated;
 
@@ -1185,7 +1178,15 @@ async function copyCurrentRenderSvg() {
 }
 
 onMounted(async () => {
-  initializeScripts();
+  try {
+    await initializeScripts();
+  } catch (error) {
+    runtimeStatus.value = `脚本读取失败，请刷新重试：${error?.message || '存储不可用'}`;
+    runtimeStatusLevel.value = 'error';
+    return;
+  }
+  if (disposed) return;
+  storageReady.value = true;
   await nextTick();
   initializeResizeObserver();
   initializeMonacoEditor();
@@ -1202,6 +1203,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  disposed = true;
   stopDrag();
   window.removeEventListener('keydown', handleDocumentKeydown);
   if (resizeObserver) {

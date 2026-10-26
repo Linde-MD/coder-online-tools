@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue';
 import { HistoryManager } from '@/features/can-arch/infra/HistoryManager.js';
-import { LocalStorageRepository } from '@/features/can-arch/infra/LocalStorageRepository.js';
+import { DexieRepository } from '@/features/can-arch/infra/DexieRepository.js';
 import {
   cloneBusesSnapshot,
   cloneLinksSnapshot,
@@ -20,7 +20,7 @@ export function createTopologyStore({
   onStatus,
 }) {
   const history = new HistoryManager(historyLimit);
-  const repository = new LocalStorageRepository(STORAGE_KEY);
+  const repository = new DexieRepository(STORAGE_KEY);
 
   const nodes = ref([]);
   const buses = ref([]);
@@ -34,7 +34,7 @@ export function createTopologyStore({
       nodes: cloneNodesSnapshot(nodes.value),
       buses: cloneBusesSnapshot(buses.value),
       links: cloneLinksSnapshot(links.value),
-    });
+    }).catch((error) => onStatus?.(`架构保存失败：${error.message}`, true));
   }
 
   function takeSnapshot() {
@@ -75,8 +75,8 @@ export function createTopologyStore({
     });
   }
 
-  function load() {
-    const payload = repository.load();
+  async function load() {
+    const payload = await repository.load();
     if (!payload) return;
     nodes.value = hydrateNodes(payload.nodes || [], { nextNodePosition });
     buses.value = hydrateBuses(payload.buses || [], { nextBusPosition });

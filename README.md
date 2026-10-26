@@ -49,11 +49,12 @@
 
 ## 技术栈与数据边界
 
-- **前端**：Vue 3、Vue Router、Vite、D3、Monaco Editor、Marked、Lodash。
+- **前端**：Vue 3、Vue Router、Vite、D3、Monaco Editor、Marked、Lodash、Dexie.js。
 - **样式**：Tailwind CSS 为新增样式首选；Bootstrap CSS 仅为既有界面兼容保留。
 - **服务与发布**：Node.js、Koa、`koa-static`、`koa-proxies`；可用 `pkg` 打包 Windows EXE。
 - **测试**：Vitest。
-- **数据**：CAN 架构、曲线配置、文言脚本和知识问答连接设置默认写入浏览器 `localStorage`。应用不内置知识库服务地址或密钥，也不提供服务端代理鉴权。
+- **数据**：CAN 架构与吸顶偏好、内嵌 J1939 换算设置、曲线配置与公式、文言脚本、知识问答连接设置通过 Dexie.js 写入浏览器 IndexedDB（数据库 `coderOnlineTools`，表 `settings`）。首次读取时自动迁移当前站点的旧 `localStorage` 数据，写入成功后删除对应旧键；迁移失败保留旧数据。全局路由记忆仍使用 `localStorage`。
+- **安全边界**：IndexedDB 仍是浏览器本地存储，并非加密保险箱；知识库 Authorization 不会因迁移自动加密。应用不内置知识库服务地址或密钥，也不提供服务端代理鉴权。知识库会话仍仅保存在内存中。
 
 ## 本地开发
 

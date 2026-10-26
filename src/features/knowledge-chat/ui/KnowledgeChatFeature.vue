@@ -96,7 +96,7 @@
           <div class="knowledge-chat-config-head">
             <div>
               <h3>知识库连接设置</h3>
-              <p>保存后将写入浏览器 Local Storage，可随时修改。</p>
+              <p>保存后将写入浏览器 IndexedDB，可随时修改。</p>
             </div>
             <button type="button" class="btn btn-outline-secondary btn-sm" @click="closeConfigDialog">关闭</button>
           </div>
@@ -170,7 +170,8 @@ defineProps({
   },
 });
 
-const config = ref(readKnowledgeChatConfig());
+const config = ref(normalizeConfig());
+const storageReady = ref(false);
 const draftConfig = ref(normalizeConfig(config.value));
 const configDialogOpen = ref(false);
 const configError = ref('');
@@ -199,6 +200,7 @@ function makeMessage(role, content, references = []) {
 }
 
 function openConfigDialog() {
+  if (!storageReady.value) return;
   configError.value = '';
   draftConfig.value = normalizeConfig(config.value);
   configDialogOpen.value = true;
@@ -209,7 +211,7 @@ function closeConfigDialog() {
   configError.value = '';
 }
 
-function saveConfig() {
+async function saveConfig() {
   const normalized = normalizeConfig(draftConfig.value);
   if (!normalized.apiUrl) {
     configError.value = '请填写有效的 API URL。';
@@ -220,8 +222,12 @@ function saveConfig() {
     return;
   }
 
-  config.value = saveKnowledgeChatConfig(normalized);
-  closeConfigDialog();
+  try {
+    config.value = await saveKnowledgeChatConfig(normalized);
+    closeConfigDialog();
+  } catch (error) {
+    configError.value = `连接配置保存失败：${error?.message || '存储不可用'}`;
+  }
 }
 
 function clearMessages() {
@@ -275,7 +281,13 @@ async function submitQuestion() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  try {
+    config.value = await readKnowledgeChatConfig();
+  } catch (error) {
+    runtimeError.value = `连接配置读取失败：${error?.message || '存储不可用'}`;
+  }
+  storageReady.value = true;
   if (!isConfigReady.value) {
     openConfigDialog();
   }

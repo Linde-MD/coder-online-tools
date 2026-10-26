@@ -1,4 +1,5 @@
 import { ref, onBeforeUnmount, watch, nextTick } from 'vue';
+import { readStoredValue, writeStoredValue } from '@/shared/utils/app-storage.js';
 
 const MAGNETIC_HEADER_STORAGE_KEY = 'can-arch-magnetic-header';
 const MAGNETIC_HOVE_ZONE = 24;
@@ -9,7 +10,8 @@ export function useMagneticHeader({
   canvasHeight,
   onHeightSync,
 }) {
-  const magneticHeader = ref(localStorage.getItem(MAGNETIC_HEADER_STORAGE_KEY) === '1');
+  const magneticHeader = ref(false);
+  let disposed = false;
   const isHeaderPeeking = ref(false);
   let _magneticMouseHandler = null;
   let _magneticCollapseTimer = null;
@@ -50,9 +52,15 @@ export function useMagneticHeader({
     onHeightSync?.();
   }
 
-  function enableMagneticHeader() {
+  function persistMagneticHeader(value) {
+    writeStoredValue(MAGNETIC_HEADER_STORAGE_KEY, value).catch((error) => {
+      console.warn('Unable to save magnetic header preference', error);
+    });
+  }
+
+  function enableMagneticHeader(persist = true) {
     magneticHeader.value = true;
-    localStorage.setItem(MAGNETIC_HEADER_STORAGE_KEY, '1');
+    if (persist) persistMagneticHeader(true);
     if (!_magneticMouseHandler) {
       _magneticMouseHandler = _onMagneticMouseMove;
       window.addEventListener('mousemove', _magneticMouseHandler);
@@ -65,7 +73,7 @@ export function useMagneticHeader({
   function disableMagneticHeader() {
     magneticHeader.value = false;
     isHeaderPeeking.value = false;
-    localStorage.setItem(MAGNETIC_HEADER_STORAGE_KEY, '0');
+    persistMagneticHeader(false);
     _clearMagneticCollapseTimer();
     if (_magneticMouseHandler) {
       window.removeEventListener('mousemove', _magneticMouseHandler);
@@ -84,9 +92,12 @@ export function useMagneticHeader({
     }
   }
 
-  function initMagneticHeader() {
-    if (magneticHeader.value) {
-      enableMagneticHeader();
+  async function initMagneticHeader() {
+    try {
+      const enabled = await readStoredValue(MAGNETIC_HEADER_STORAGE_KEY, { parse: (raw) => raw === '1' });
+      if (enabled && !disposed) enableMagneticHeader(false);
+    } catch (error) {
+      console.warn('Unable to load magnetic header preference', error);
     }
   }
 
@@ -99,6 +110,7 @@ export function useMagneticHeader({
   }
 
   onBeforeUnmount(() => {
+    disposed = true;
     teardownMagneticHeader();
   });
 

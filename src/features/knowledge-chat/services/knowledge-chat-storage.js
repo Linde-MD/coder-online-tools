@@ -1,3 +1,5 @@
+import { readStoredValue, writeStoredValue } from '@/shared/utils/app-storage.js';
+
 const KNOWLEDGE_CHAT_CONFIG_KEY = 'coderOnlineTools.knowledgeChat.config.v1';
 
 const DEFAULT_QUERY_PREFIX = '';
@@ -24,22 +26,14 @@ function normalizeConfig(rawConfig = {}) {
   };
 }
 
-function readKnowledgeChatConfig() {
-  try {
-    const raw = localStorage.getItem(KNOWLEDGE_CHAT_CONFIG_KEY);
-    if (!raw) {
-      return normalizeConfig();
-    }
-    const parsed = JSON.parse(raw);
-    return normalizeConfig(parsed);
-  } catch (_) {
-    return normalizeConfig();
-  }
+async function readKnowledgeChatConfig() {
+  const stored = await readStoredValue(KNOWLEDGE_CHAT_CONFIG_KEY);
+  return normalizeConfig(stored || {});
 }
 
-function saveKnowledgeChatConfig(config) {
+async function saveKnowledgeChatConfig(config) {
   const normalized = normalizeConfig(config);
-  localStorage.setItem(KNOWLEDGE_CHAT_CONFIG_KEY, JSON.stringify(normalized));
+  await writeStoredValue(KNOWLEDGE_CHAT_CONFIG_KEY, normalized);
   return normalized;
 }
 
