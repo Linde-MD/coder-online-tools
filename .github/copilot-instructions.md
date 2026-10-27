@@ -4,7 +4,7 @@
 
 ## 先读什么
 
-- 先读 [.agents/rules/README.md](.agents/rules/README.md)，再按任务类型读取对应规则文件。
+- 先读 [.agents/rules/README.md](../.agents/rules/README.md)，再按任务类型读取对应规则文件。
 - 规则按“决策类型”拆分，不按目录拆分。
 
 ## 全局强制约束
@@ -30,9 +30,12 @@
 
 ### UI、样式与路由
 
-- 新增或修改 UI 必须参考 `DESIGN.md` 和当前页面风格，保持视觉一致；不得另起一套配色、排版或组件风格。
-- 样式优先使用 Tailwind 和项目现有 CSS 变量/token；Bootstrap 仅为兼容既有界面保留，不得扩展新的 Bootstrap 用法。颜色、边框、背景等优先复用现有 token。
-- 选中、错误、悬停等交互状态必须清晰区分，不得依赖偶然的布局差异表达状态。
+- UI 以 [DESIGN.md](../DESIGN.md) 为唯一视觉规范：暖米色画布、珊瑚色强调、平面工程工作区；旧页面的不一致不得作为新增样式依据。统一应用外壳，不覆盖图表数据色、用户配色、语法高亮或 iframe 内容。
+- 布局优先 Tailwind，视觉属性使用共享语义 token；Bootstrap 风格类仅兼容，不扩展。禁止新增与 Tailwind 同名的手写工具类，也不得让多套类竞争同一属性；兼容变量必须被实际消费者读取。
+- 颜色、字体、圆角和层级必须保持单一值来源；未落地 token 必须先定义接入。局部样式使用 scoped 或 feature 前缀，不新增全局覆盖、`!important` 或高 z-index 掩盖冲突。
+- 展示标题用共享衬线字体，工作区控件用共享无衬线，代码/数值用等宽字体并保留中文回退；间距以 4px 为基准，默认平面实底加细边框，禁止堆叠装饰效果。
+- 控件须有清晰键盘焦点及适用的 hover、选中、禁用、加载和错误状态；不能只靠颜色或布局表达状态。普通文字对比度至少 4.5:1，大文字和必要非文本信息至少 3:1；动效须支持减少动态效果偏好。
+- 响应式布局不得造成非预期页面横向溢出；满高/放大区域使用共享布局或实际导航高度，不新增固定高度扣减。样式改动须验证窄屏/桌面、状态、滚动、层级及涉及的全屏模式。
 - 路由必须统一在路由入口管理；路由、菜单和活动状态必须保持一致。页面级入口只负责路由壳和 feature 组合，不得使用 DOM 操作驱动页面切换。
 
 ### 错误处理、文档与测试
@@ -45,14 +48,14 @@
 
 ## 规则索引
 
-- [.agents/rules/01-项目概述.md](.agents/rules/01-项目概述.md)
-- [.agents/rules/02-编码规范.md](.agents/rules/02-编码规范.md)
-- [.agents/rules/03-项目结构.md](.agents/rules/03-项目结构.md)
-- [.agents/rules/04-组件规范.md](.agents/rules/04-组件规范.md)
-- [.agents/rules/05-API规范.md](.agents/rules/05-API规范.md)
-- [.agents/rules/06-路由规范.md](.agents/rules/06-路由规范.md)
-- [.agents/rules/07-状态管理.md](.agents/rules/07-状态管理.md)
-- [.agents/rules/08-通用约束.md](.agents/rules/08-通用约束.md)
-- [.agents/rules/09-样式规范.md](.agents/rules/09-样式规范.md)
-- [.agents/rules/10-文档规范.md](.agents/rules/10-文档规范.md)
-- [.agents/rules/11-测试规范.md](.agents/rules/11-测试规范.md)
+- [.agents/rules/01-项目概述.md](../.agents/rules/01-项目概述.md)
+- [.agents/rules/02-编码规范.md](../.agents/rules/02-编码规范.md)
+- [.agents/rules/03-项目结构.md](../.agents/rules/03-项目结构.md)
+- [.agents/rules/04-组件规范.md](../.agents/rules/04-组件规范.md)
+- [.agents/rules/05-API规范.md](../.agents/rules/05-API规范.md)
+- [.agents/rules/06-路由规范.md](../.agents/rules/06-路由规范.md)
+- [.agents/rules/07-状态管理.md](../.agents/rules/07-状态管理.md)
+- [.agents/rules/08-通用约束.md](../.agents/rules/08-通用约束.md)
+- [.agents/rules/09-样式规范.md](../.agents/rules/09-样式规范.md)
+- [.agents/rules/10-文档规范.md](../.agents/rules/10-文档规范.md)
+- [.agents/rules/11-测试规范.md](../.agents/rules/11-测试规范.md)

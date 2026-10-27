@@ -300,6 +300,8 @@ components:
 
 ## Overview
 
+This is a reusable warm-editorial visual specification. Brand names, logos, and marketing scenarios below illustrate the original reference, not mandatory product identity or features. Token references are design notation, not runtime CSS variables; framework choices, code mappings, and product-specific adaptations belong in implementation rules.
+
 Claude.com is the warmest, most editorial interface in the AI-product category. The base atmosphere is a **tinted cream canvas** (`{colors.canvas}` — #faf9f5) — distinctly warm, deliberately not the cool gray-white that every other AI brand uses. Headlines run a **slab-serif display** ("Copernicus" / Tiempos Headline) at weight 400 with negative letter-spacing, paired with **StyreneB / Inter** body sans. The combination feels like a literary publication, not a SaaS marketing page.
 
 Brand voltage comes from the **cream + coral pairing** — coral (`{colors.primary}` — #cc785c) is the signature Anthropic accent, used on every primary CTA, on the brand wordmark, and on full-bleed callout cards. The coral is warm, slightly muted, never cyan/blue — a deliberate counter-positioning against OpenAI's cool slate, Google's saturated blue, and Microsoft's corporate cyan.
@@ -356,6 +358,8 @@ The dark surfaces are where Claude shows its product chrome — code blocks, ter
 - **Warning** (`{colors.warning}` — #d4a017): Warning callouts (rare on marketing surfaces).
 - **Error** (`{colors.error}` — #c64545): Validation errors.
 
+For application controls, distinguish brand accents from action and status colors: an ordinary “enter/save/run” action is not green success feedback. Verify final foreground/background contrast (4.5:1 for normal text; 3:1 for large text and necessary non-text indicators). White on `#cc785c` does not meet the normal-text threshold; use deeper coral `#a9583e` for a white-label primary action, and a darker variant for its hover/pressed state. Pale status colors and hairlines are not automatically suitable for text or control boundaries.
+
 ## Typography
 
 ### Font Family
@@ -392,6 +396,8 @@ Body type stays at weight 400 for paragraphs, weight 500 for labels and emphasiz
 
 ### Note on Font Substitutes
 If Copernicus / Tiempos Headline is unavailable, **Cormorant Garamond** at weight 500 with -0.02em letter-spacing is the closest open-source approximation. **EB Garamond** is a fallback. For StyreneB, **Inter** is the closest match — both are humanist sans designed for screen reading. **Söhne** is another close alternative if licensed.
+
+Reference typefaces may be substituted with available serif, sans-serif, and monospace families while preserving their visual roles. Provide language-appropriate and offline fallbacks; do not force negative tracking on Chinese body text.
 
 ## Layout
 
@@ -456,11 +462,11 @@ When photography is used (rare — mostly testimonials), avatars crop to perfect
 
 ### Top Navigation
 
-**`top-nav`** — Cream nav bar pinned to the top of every page. 64px tall, `{colors.canvas}` background. Carries the Anthropic spike-mark + "Claude" wordmark at left, primary horizontal menu (Product, Solutions, Use Cases, Pricing, Research, Company) center-left, right-side cluster with "Sign in" text-link, "Try Claude" `{component.button-primary}` (coral). Menu items in `{typography.nav-link}` (StyreneB 14px / 500).
+**`top-nav`** — Cream sticky navigation carrying product identity and primary destinations. Use `{colors.canvas}` and `{typography.nav-link}`. Height follows actual content and is coordinated with the surrounding layout rather than assumed by individual screens.
 
 ### Buttons
 
-**`button-primary`** — The signature coral CTA. Background `{colors.primary}` (#cc785c), text `{colors.on-primary}` (white), type `{typography.button}` (StyreneB 14px / 500), padding 12px × 20px, height 40px, rounded `{rounded.md}` (8px). Active state `button-primary-active` darkens to `{colors.primary-active}` (#a9583e).
+**`button-primary`** — Coral CTA using `{typography.button}` and the accessible action color described in Colors. Standard height 40px, horizontal padding 12–20px, rounded `{rounded.md}` (8px); compact toolbars may use 32px controls. Use one emphasized action per group and a visibly darker hover/pressed state.
 
 **`button-secondary`** — Cream button with hairline outline. Background `{colors.canvas}`, text `{colors.ink}`, 1px hairline border, same padding + height + radius as primary.
 
@@ -498,7 +504,7 @@ When photography is used (rare — mostly testimonials), avatars crop to perfect
 
 **`text-input`** — Standard text input. Background `{colors.canvas}`, text `{colors.ink}`, type `{typography.body-md}`, rounded `{rounded.md}` (8px), padding 10px × 14px, height 40px. 1px hairline border in `{colors.hairline}`.
 
-**`text-input-focused`** — Focus state. Border thickens or shifts to `{colors.primary}` (coral) for emphasis. Carries a 3px coral-at-15%-alpha outer ring.
+**`text-input-focused`** — Focus state uses a visible 2px deep-coral outline with 2px offset; a subtle outer ring may supplement it. Do not change border thickness in a way that shifts layout or remove the outline without an equally visible replacement.
 
 **`cookie-consent-card`** — Bottom-right floating dark cookie banner. Background `{colors.surface-dark}`, text `{colors.on-dark}`, rounded `{rounded.lg}`, padding `{spacing.lg}` (24px). One of the few places dark surface appears at small scale on cream pages.
 
@@ -537,8 +543,8 @@ When photography is used (rare — mostly testimonials), avatars crop to perfect
 - Don't use cool blue or saturated cyan as a brand accent. The coral is the brand voltage.
 - Don't put coral everywhere. The coral is scarce on individual elements and generous only on full-bleed coral callout cards.
 - Don't use Inter for display headlines. The serif character is the brand voice.
-- Don't repeat the same surface mode in two consecutive bands. The pacing alternates: cream → cream-card → dark-mockup → cream → coral-callout → dark-footer.
-- Don't add hover state styling beyond what the system already encodes — primary darkens on press; nothing else changes.
+- Don't force alternating surfaces in engineering workspaces; dark content areas are optional and serve code, terminals, or data rather than decoration.
+- Don't omit interaction states: controls need applicable hover, focus-visible, pressed/selected, disabled, loading, and error feedback. Do not use card movement as the only affordance, let hover erase selection, or rely on color alone for status.
 
 ## Responsive Behavior
 
@@ -546,23 +552,24 @@ When photography is used (rare — mostly testimonials), avatars crop to perfect
 
 | Name | Width | Key Changes |
 |---|---|---|
-| Mobile | < 768px | Hamburger nav; hero h1 64→32px; hero-illustration-card stacks below content; feature grids 1-up; connector tiles 2-up; pricing 1-up; footer 4 cols → 1 |
+| Mobile | < 768px | Navigation scrolls horizontally or uses an explicit overflow menu; hero h1 reduces toward 32px; feature grids stack without squeezing text; reference marketing layouts stack where used |
 | Tablet | 768–1024px | Top nav stays horizontal but tightens; feature cards 2-up; connector tiles 3-up; pricing 2-up |
 | Desktop | 1024–1440px | Full top-nav with all menu items; 3-up feature cards; 4-up or 6-up connector tiles; 3-up pricing tiers |
 | Wide | > 1440px | Same as desktop with more outer breathing room; max content width caps at 1200px |
 
 ### Touch Targets
 - `{component.button-primary}` at minimum 40 × 40px.
-- `{component.button-icon-circular}` at exactly 36 × 36 — slightly under WCAG 44 but visually centered.
+- Icon controls may be visually compact (32–36px); primary touch targets must provide at least 44 × 44px of interaction area.
 - `{component.text-input}` height is 40px.
 - Connector tile entire card area is tappable; effective tap area >> 44px.
 
 ### Collapsing Strategy
-- Top nav collapses to hamburger at < 768px; menu opens as a full-screen cream sheet.
+- Top nav remains fully reachable on narrow screens through scrolling or an overflow menu; a hamburger redesign is not required.
 - Hero band's 6-6 grid collapses to single-column on mobile — h1 + sub-head + buttons first, then the illustration / mockup card below.
 - Feature grids reduce columns rather than scaling cards down.
 - Pricing tier cards collapse 4 → 2 → 1; featured-tier dark surface stays visually distinct at every breakpoint.
 - Code-window cards retain code legibility at every breakpoint by allowing horizontal scroll within the card rather than wrapping code lines.
+- Application grids adapt to available space; use local scrolling for long tables, code, and canvases, not page-wide overflow. Full-height workspaces use shared layout/actual nav height and dynamic viewport units; check stacking contexts before increasing z-index.
 
 ### Image Behavior
 - Code blocks inside dark mockups stay at fixed font-size; horizontal scroll on mobile rather than wrapping.
@@ -574,9 +581,9 @@ When photography is used (rare — mostly testimonials), avatars crop to perfect
 1. Focus on ONE component at a time. Reference its YAML key (`{component.feature-card}`, `{component.code-window-card}`).
 2. Variants of an existing component (`-active`, `-disabled`, `-focused`) live as separate entries in `components:`.
 3. Use `{token.refs}` everywhere — never inline hex.
-4. Never document hover. Default and Active/Pressed states only.
-5. Display headlines stay Copernicus serif 400 with negative tracking. Body stays StyreneB / Inter 400. The split is unbreakable.
-6. Cream + coral + dark navy is the trinity. Don't introduce a fourth surface tone (no purple cards, no green sections).
+4. Document applicable interaction states and use short, targeted transitions; respect `prefers-reduced-motion` and avoid `transition: all`.
+5. Preserve the display/body font distinction and suitable fallbacks without requiring the exact reference typefaces.
+6. Preserve cream + coral application chrome, with optional warm-dark content surfaces; data and user-defined colors remain independent.
 7. When in doubt about emphasis: bigger Copernicus serif before bolder weight.
 
 ## Known Gaps
