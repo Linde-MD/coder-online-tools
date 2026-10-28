@@ -1,5 +1,6 @@
 import { computed, nextTick, ref, watch } from 'vue';
 import { CanMessage } from '../../domain/models/CanMessage.js';
+import { validateSignalLayout } from '../../services/signal-layout.js';
 import { decodeJ1939Id, encodeJ1939IdFromPgn, parseNumberInput } from '../../../../shared/utils/j1939.js';
 
 const J1939_PRIORITY_DONT_CARE = 'dont_care';
@@ -22,56 +23,21 @@ function cacheKey(ecu, bus) {
 const filterStateCache = new Map();
 const preSnapshot = new Map();
 
-function resolveMessageTotalBits(message) {
-  const rawDlc = Number.parseInt(message?.dlc, 10);
-  const dlc = Number.isInteger(rawDlc) ? Math.max(0, Math.min(64, rawDlc)) : 8;
-  return Math.max(0, dlc * 8);
-}
-
-function expandSignalBits(signal, byteOrder = 'intel') {
-  const rawLength = Number.parseInt(signal?.length, 10);
-  const length = Number.isInteger(rawLength) ? Math.max(1, rawLength) : 1;
-  const rawStart = Number.parseInt(signal?.startBit, 10);
-  const startBit = Number.isInteger(rawStart) ? rawStart : 0;
-  const bits = [];
-
-  if (byteOrder === 'motorola') {
-    // Vector-style Motorola startBit: treat startBit as LSB index.
-    let current = startBit;
-    for (let idx = 0; idx < length; idx += 1) {
-      bits.push(current);
-      if (current % 8 === 7) {
-        current -= 15;
-      } else {
-        current += 1;
-      }
-    }
-    return bits;
-  }
-
-  for (let idx = 0; idx < length; idx += 1) {
-    bits.push(startBit + idx);
-  }
-  return bits;
-}
-
 function collectMessageLayoutErrors(message) {
   const layoutErrors = [];
   if (!message) return layoutErrors;
 
-  const totalBits = resolveMessageTotalBits(message);
-  const byteOrder = message?.byteOrder === 'motorola' ? 'motorola' : 'intel';
   const signals = Array.isArray(message?.signals) ? message.signals : [];
   const bitOwners = new Map();
 
   for (const signal of signals) {
     if (!signal) continue;
     const signalName = String(signal.name || '未命名Signal');
-    const bits = expandSignalBits(signal, byteOrder);
-
-    const outOfRangeBits = bits.filter((bit) => bit < 0 || bit >= totalBits);
-    if (outOfRangeBits.length > 0) {
-      layoutErrors.push(`Signal "${signalName}" 超出可用 bit 范围（DLC=${message.dlc}，字节序=${byteOrder}）。`);
+    const validation = validateSignalLayout(signal, message);
+    const { bits, totalBits } = validation;
+    const errors = [validation.messageError, validation.startBitError, validation.lengthError].filter(Boolean);
+    if (errors.length > 0) {
+      layoutErrors.push(`Signal "${signalName}" ${errors.join(' ')}`);
     }
 
     for (const bit of bits) {

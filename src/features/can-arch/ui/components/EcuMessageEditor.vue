@@ -518,53 +518,11 @@
         </template>
 
         <template v-else>
-          <div class="ecu-prop-grid">
-            <label>Signal 名称</label>
-            <input v-model="selectedEntity.entity.name" class="form-control form-control-sm">
-
-            <label>起始位</label>
-            <input v-model.number="selectedEntity.entity.startBit" class="form-control form-control-sm" type="number" min="0">
-
-            <label>长度(bit)</label>
-            <input v-model.number="selectedEntity.entity.length" class="form-control form-control-sm" type="number" min="1">
-
-            <label>Factor</label>
-            <input v-model.number="selectedEntity.entity.factor" class="form-control form-control-sm" type="number" step="any">
-
-            <label>Offset</label>
-            <input v-model.number="selectedEntity.entity.offset" class="form-control form-control-sm" type="number" step="any">
-
-            <label>物理最小值</label>
-            <input
-              v-model="selectedEntity.entity.min"
-              class="form-control form-control-sm"
-              type="number"
-              step="any"
-              placeholder="可留空"
-              @blur="onSignalPhysicalLimitBlur(selectedEntity.entity, 'min')"
-            >
-
-            <label>物理最大值</label>
-            <input
-              v-model="selectedEntity.entity.max"
-              class="form-control form-control-sm"
-              type="number"
-              step="any"
-              placeholder="可留空"
-              @blur="onSignalPhysicalLimitBlur(selectedEntity.entity, 'max')"
-            >
-
-            <label>Signed</label>
-            <label class="form-check-label d-flex align-items-center gap-2">
-              <input v-model="selectedEntity.entity.signed" class="form-check-input" type="checkbox">有符号
-            </label>
-
-            <label>单位</label>
-            <input v-model="selectedEntity.entity.unit" class="form-control form-control-sm">
-          </div>
-
-          <label class="mt-2 mb-1">注释</label>
-          <textarea v-model="selectedEntity.entity.comment" class="form-control form-control-sm" rows="2"></textarea>
+          <SignalPropertiesEditor
+            :signal="selectedEntity.entity"
+            :message="selectedEntity.message"
+            @physical-limit-blur="onSignalPhysicalLimitBlur(selectedEntity.entity, $event)"
+          />
         </template>
       </aside>
 
@@ -658,6 +616,7 @@ import { useEcuMessageWorkspace } from '@/features/can-arch/app/composables/useE
 import { useEcuMessageSelection } from '@/features/can-arch/app/composables/useEcuMessageSelection.js';
 import { useEcuMessageCommands } from '@/features/can-arch/app/composables/useEcuMessageCommands.js';
 import EcuMessageFilterPanel from './EcuMessageFilterPanel.vue';
+import SignalPropertiesEditor from './SignalPropertiesEditor.vue';
 import { filterPanelPositionCache, saveFilterPanelOpen } from '@/features/can-arch/app/composables/useFilterPanelCache.js';
 import { decodeJ1939Id, encodeJ1939IdFromPgn, formatHex, parseNumberInput } from '@/shared/utils/j1939.js';
 
