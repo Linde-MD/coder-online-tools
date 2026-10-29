@@ -229,7 +229,16 @@
       <aside v-if="showPropsPanel" class="ecu-msg-props" :style="propsPanelStyle">
         <div class="ecu-msg-props-title">属性编辑</div>
 
-        <template v-if="selectedEntity.type === 'message'">
+        <MessagePropertiesEditor
+          v-if="selectedEntity.type === 'message'"
+          v-model:mode="messagePropertyMode"
+          :message="selectedEntity.entity"
+          :participants="messageTextParticipants"
+          :current-ecu-id="props.ecu.id"
+          :pane="selectedEntity.pane"
+          :drafts="messageTextDrafts"
+          :persist-changes="props.persistChanges"
+        >
           <div class="ecu-prop-grid">
             <label>名称</label>
             <input v-model="selectedEntity.entity.name" class="form-control form-control-sm">
@@ -411,29 +420,11 @@
                   <path d="M7 2h2v5h5v2H9v5H7V9H2V7h5V2Z" />
                 </svg>
               </button>
-              <div v-if="senderPickerOpen" class="ecu-participant-picker">
-                <div class="ecu-participant-picker-list">
-                  <label
-                    v-for="opt in getAvailableParticipantOptions('senders')"
-                    :key="`snd-pick-${opt.id}`"
-                    class="ecu-participant-picker-option"
-                  >
-                    <input v-model="senderPickerSelection" class="form-check-input" type="checkbox" :value="opt.id">
-                    <span>{{ opt.name }}</span>
-                  </label>
-                </div>
-                <div class="ecu-participant-picker-actions">
-                  <button type="button" class="btn btn-outline-secondary btn-sm" @click="closeParticipantPicker('senders')">取消</button>
-                  <button
-                    type="button"
-                    class="btn btn-primary btn-sm"
-                    :disabled="senderPickerSelection.length === 0"
-                    @click="confirmParticipantPicker('senders')"
-                  >
-                    添加
-                  </button>
-                </div>
-              </div>
+              <MessageParticipantPicker
+                v-if="senderPickerOpen" v-model:selected="senderPickerSelection" label="发送方"
+                :options="getAvailableParticipantOptions('senders')" :can-confirm="senderPickerSelection.length > 0"
+                @cancel="closeParticipantPicker('senders')" @confirm="confirmParticipantPicker('senders')"
+              />
             </div>
 
             <label>接收方</label>
@@ -483,39 +474,18 @@
                   <path d="M7 2h2v5h5v2H9v5H7V9H2V7h5V2Z" />
                 </svg>
               </button>
-              <div v-if="receiverPickerOpen" class="ecu-participant-picker">
-                <label class="ecu-participant-picker-option ecu-participant-picker-broadcast">
-                  <input v-model="receiverPickerBroadcast" class="form-check-input" type="checkbox">
-                  <span>broadcast</span>
-                </label>
-                <div class="ecu-participant-picker-list">
-                  <label
-                    v-for="opt in getAvailableParticipantOptions('receivers')"
-                    :key="`rcv-pick-${opt.id}`"
-                    class="ecu-participant-picker-option"
-                  >
-                    <input v-model="receiverPickerSelection" class="form-check-input" type="checkbox" :value="opt.id">
-                    <span>{{ opt.name }}</span>
-                  </label>
-                </div>
-                <div class="ecu-participant-picker-actions">
-                  <button type="button" class="btn btn-outline-secondary btn-sm" @click="closeParticipantPicker('receivers')">取消</button>
-                  <button
-                    type="button"
-                    class="btn btn-primary btn-sm"
-                    :disabled="!canConfirmReceiverPicker"
-                    @click="confirmParticipantPicker('receivers')"
-                  >
-                    添加
-                  </button>
-                </div>
-              </div>
+              <MessageParticipantPicker
+                v-if="receiverPickerOpen" v-model:selected="receiverPickerSelection"
+                v-model:broadcast="receiverPickerBroadcast" label="接收方" show-broadcast
+                :options="getAvailableParticipantOptions('receivers')" :can-confirm="canConfirmReceiverPicker"
+                @cancel="closeParticipantPicker('receivers')" @confirm="confirmParticipantPicker('receivers')"
+              />
             </div>
           </div>
 
           <label class="mt-2 mb-1">注释</label>
           <textarea v-model="selectedEntity.entity.comment" class="form-control form-control-sm" rows="2"></textarea>
-        </template>
+        </MessagePropertiesEditor>
 
         <template v-else>
           <SignalPropertiesEditor
@@ -620,6 +590,8 @@ import { useEcuMessageSelection } from '@/features/can-arch/app/composables/useE
 import { useEcuMessageCommands } from '@/features/can-arch/app/composables/useEcuMessageCommands.js';
 import EcuMessageFilterPanel from './EcuMessageFilterPanel.vue';
 import SignalPropertiesEditor from './SignalPropertiesEditor.vue';
+import MessagePropertiesEditor from './MessagePropertiesEditor.vue';
+import MessageParticipantPicker from './MessageParticipantPicker.vue';
 import { filterPanelPositionCache, saveFilterPanelOpen } from '@/features/can-arch/app/composables/useFilterPanelCache.js';
 import { decodeJ1939Id, encodeJ1939IdFromPgn, formatHex, parseNumberInput } from '@/shared/utils/j1939.js';
 
@@ -657,6 +629,8 @@ const props = defineProps({
 const emit = defineEmits(['close', 'switch-ecu']);
 const signalPropertyMode = ref('form');
 const signalTextDrafts = new Map();
+const messagePropertyMode = ref('form');
+const messageTextDrafts = new Map();
 
 function onEcuSwitch(ecuId) {
   if (!ecuId || ecuId === props.ecu?.id) return;
@@ -875,6 +849,8 @@ const participantOptions = computed(() => {
   }
   return options;
 });
+
+const messageTextParticipants = computed(() => [props.ecu, ...peerOptions.value]);
 
 const selectedMessageEntity = computed(() => {
   if (selectedEntity.value?.type !== 'message') return null;
@@ -1665,18 +1641,19 @@ function confirmParticipantPicker(key) {
   const currentSenders = Array.isArray(message.senders) ? [...message.senders] : [];
   const currentReceivers = Array.isArray(message.receivers) ? [...message.receivers] : [];
   const picked = key === 'senders' ? senderPickerSelection.value : receiverPickerSelection.value;
+  const nextReceiverIsBroadcast = key === 'receivers' ? receiverPickerBroadcast.value : message.receiverMode === 'broadcast';
   const nextSenders = key === 'senders'
     ? [...new Set([...currentSenders, ...picked])]
     : currentSenders;
   const nextReceivers = key === 'receivers'
-    ? (receiverPickerBroadcast.value ? [] : [...new Set([...currentReceivers, ...picked])])
+    ? (nextReceiverIsBroadcast ? [] : [...new Set([...currentReceivers, ...picked])])
     : currentReceivers;
 
-  if (!confirmParticipantMutation(message, key, nextSenders, nextReceivers, receiverPickerBroadcast.value)) {
+  if (!confirmParticipantMutation(message, key, nextSenders, nextReceivers, nextReceiverIsBroadcast)) {
     return;
   }
 
-  if (shouldDeleteMessage(nextSenders, nextReceivers, receiverPickerBroadcast.value)) {
+  if (shouldDeleteMessage(nextSenders, nextReceivers, nextReceiverIsBroadcast)) {
     closeParticipantPicker(key);
     deleteSelection();
     return;
@@ -1684,7 +1661,7 @@ function confirmParticipantPicker(key) {
 
   message.senders = nextSenders;
   message.receivers = nextReceivers;
-  message.receiverMode = receiverPickerBroadcast.value ? 'broadcast' : 'nodes';
+  message.receiverMode = nextReceiverIsBroadcast ? 'broadcast' : 'nodes';
     validateJ1939ParticipantsAfterManualEdit(message);
   closeParticipantPicker(key);
 }
@@ -2911,42 +2888,6 @@ defineExpose({
 .ecu-participant-add-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
-}
-
-.ecu-participant-picker {
-  border-top: 1px dashed #d8c5b3;
-  padding-top: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.ecu-participant-picker-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 132px;
-  overflow: auto;
-}
-
-.ecu-participant-picker-option {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: #4e3a2a;
-}
-
-.ecu-participant-picker-broadcast {
-  border-bottom: 1px dashed #d8c5b3;
-  padding-bottom: 4px;
-  margin-bottom: 2px;
-}
-
-.ecu-participant-picker-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 6px;
 }
 
 .ecu-bit-layout-empty {

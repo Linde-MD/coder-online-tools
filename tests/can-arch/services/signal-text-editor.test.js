@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { effectScope, ref } from 'vue';
 import { useSignalTextEditor } from '../../../src/features/can-arch/app/composables/useSignalTextEditor.js';
+import { usePropertyTextEditor } from '../../../src/features/can-arch/app/composables/usePropertyTextEditor.js';
+import { CanMessage } from '../../../src/features/can-arch/domain/models/CanMessage.js';
+import { captureMessageProperties, parseMessageProperties, serializeMessageProperties } from '../../../src/features/can-arch/services/message-properties-text.js';
+import { serializePropertyText } from '../../../src/features/can-arch/services/property-text-codec.js';
 import { serializeSignalProperties } from '../../../src/features/can-arch/services/signal-properties-text.js';
 
 const scopes = [];
@@ -225,5 +229,76 @@ describe('Signal text editor drafts', () => {
     expect(editor.draft.value.text).toContain('YAML 草稿');
     expect(editor.canSave.value).toBe(true);
     expect(editor.hasConflict.value).toBe(false);
+  });
+});
+
+describe.each(['json', 'yaml'])('Message %s editor drafts', (currentFormat) => {
+  function createMessageEditor(persistChanges = vi.fn().mockResolvedValue(true)) {
+    const entity = ref(new CanMessage({
+      id: 'message-1', name: 'MSG_1', senders: ['ecu-1'], receiverMode: 'broadcast',
+      signals: [{ id: 'sig-1', name: 'SIG_1', startBit: 56, length: 8 }],
+    }));
+    const format = ref(currentFormat);
+    const participants = [{ id: 'ecu-1', name: 'ECU_A' }];
+    const scope = effectScope();
+    scopes.push(scope);
+    const editor = scope.run(() => usePropertyTextEditor({
+      entity, format, drafts: new Map(), label: 'Message', persistChanges,
+      serialize: (message, kind) => serializeMessageProperties(message, kind, participants), capture: captureMessageProperties,
+      parse: (text, kind) => parseMessageProperties(text, {
+        message: entity.value, participants, currentEcuId: 'ecu-1', pane: 'tx',
+      }, kind),
+    }));
+    function edit(overrides) {
+      editor.draft.value.text = serializePropertyText({
+        ...JSON.parse(serializeMessageProperties(entity.value, 'json', participants)), ...overrides,
+      }, format.value);
+    }
+    return { ...editor, entity, format, edit, persistChanges };
+  }
+
+  it('saves message properties while preserving the original child signal references', async () => {
+    const editor = createMessageEditor();
+    const signals = editor.entity.value.signals;
+    const child = signals[0];
+    editor.edit({ name: 'TEXT_MESSAGE', protocol: 'generic_ext', id: 0x1234 });
+    expect(await editor.save()).toBe(true);
+    expect(editor.entity.value.name).toBe('TEXT_MESSAGE');
+    expect(editor.entity.value.id).toBe('message-1');
+    expect(editor.entity.value.idHex).toBe('0x00001234');
+    expect(editor.entity.value.senders).toEqual(['ecu-1']);
+    expect(editor.entity.value.signals).toBe(signals);
+    expect(editor.entity.value.signals[0]).toBe(child);
+    expect(editor.entity.value.color).toBe(CanMessage.colorForProtocol('generic_ext'));
+    expect(editor.hasConflict.value).toBe(false);
+  });
+
+  it('rolls back message metadata after a failed write and preserves child signals', async () => {
+    const editor = createMessageEditor(vi.fn().mockResolvedValue(false));
+    const before = captureMessageProperties(editor.entity.value);
+    const signals = editor.entity.value.signals;
+    editor.edit({ protocol: 'generic_ext', id: 0x1234 });
+    expect(await editor.save()).toBe(false);
+    expect(captureMessageProperties(editor.entity.value)).toEqual(before);
+    expect(editor.entity.value.signals).toBe(signals);
+    expect(editor.canSave.value).toBe(true);
+  });
+
+  it('blocks an edit that would overflow an existing signal', async () => {
+    const editor = createMessageEditor();
+    editor.edit({ dlc: 7 });
+    expect(await editor.save()).toBe(false);
+    expect(editor.persistChanges).not.toHaveBeenCalled();
+    expect(editor.entity.value.dlc).toBe(8);
+    expect(editor.errors.value.join('')).toContain('Signal SIG_1');
+  });
+
+  it('detects an intervening form edit instead of overwriting it', async () => {
+    const editor = createMessageEditor();
+    editor.edit({ name: 'TEXT_DRAFT' });
+    editor.entity.value.name = 'FORM_EDIT';
+    expect(await editor.save()).toBe(false);
+    expect(editor.errors.value.join('')).toContain('Message 已被其他操作修改');
+    expect(editor.entity.value.name).toBe('FORM_EDIT');
   });
 });

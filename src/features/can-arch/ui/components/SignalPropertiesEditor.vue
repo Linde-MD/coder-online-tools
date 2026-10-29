@@ -1,34 +1,6 @@
 <template>
   <div class="signal-properties" @keydown="handleKeydown">
-    <div class="signal-properties-toolbar">
-      <span class="signal-properties-format">{{ mode === 'form' ? '' : textFormat.toUpperCase() }}</span>
-      <div class="signal-properties-modes" role="group" aria-label="Signal 编辑方式">
-        <button
-          type="button"
-          class="signal-properties-mode"
-          :aria-pressed="mode === 'form'"
-          title="表单编辑"
-          aria-label="表单编辑"
-          @click="emit('update:mode', 'form')"
-        ><List :size="18" aria-hidden="true" /></button>
-        <button
-          type="button"
-          class="signal-properties-mode"
-          :aria-pressed="mode === 'text'"
-          title="文本编辑（JSON）"
-          aria-label="文本编辑（JSON）"
-          @click="emit('update:mode', 'text')"
-        ><CodeXml :size="18" aria-hidden="true" /></button>
-        <button
-          type="button"
-          class="signal-properties-mode"
-          :aria-pressed="mode === 'yaml'"
-          title="文本编辑（YAML）"
-          aria-label="文本编辑（YAML）"
-          @click="emit('update:mode', 'yaml')"
-        ><FileText :size="18" aria-hidden="true" /></button>
-      </div>
-    </div>
+    <PropertyEditorModeSwitch :model-value="mode" label="Signal" @update:model-value="emit('update:mode', $event)" />
     <template v-if="mode === 'form'">
     <div class="signal-properties-grid">
       <label :for="`${id}-name`">Signal 名称</label>
@@ -131,7 +103,7 @@
 
 <script setup>
 import { computed, ref, useId } from 'vue';
-import { CodeXml, FileText, List } from '@lucide/vue';
+import PropertyEditorModeSwitch from './PropertyEditorModeSwitch.vue';
 import { validateSignalLayout } from '../../services/signal-layout.js';
 import SignalTextEditor from './SignalTextEditor.vue';
 
@@ -159,52 +131,6 @@ function handleKeydown(event) {
 </script>
 
 <style scoped>
-.signal-properties-toolbar,
-.signal-properties-modes {
-  display: flex;
-  align-items: center;
-}
-
-.signal-properties-toolbar {
-  justify-content: space-between;
-  margin-bottom: 6px;
-}
-
-.signal-properties-format {
-  color: var(--color-muted);
-  font: 12px var(--font-code);
-}
-
-.signal-properties-mode {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-sm);
-  color: var(--color-muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.signal-properties-mode:hover {
-  background: var(--color-surface-soft);
-  color: var(--color-ink);
-}
-
-.signal-properties-mode[aria-pressed='true'] {
-  color: var(--color-primary-active);
-  background: var(--color-surface-soft);
-  box-shadow: inset 0 -2px var(--color-primary-active);
-}
-
-.signal-properties-mode:focus-visible {
-  outline: 2px solid var(--color-primary-active);
-  outline-offset: 2px;
-}
-
 .signal-properties-grid {
   display: grid;
   grid-template-columns: minmax(0, 96px) minmax(0, 1fr);

@@ -1,63 +1,24 @@
-import { isAlias, parseDocument, stringify, visit } from 'yaml';
+import { parsePropertyText, serializePropertyText } from './property-text-codec.js';
 import { validateSignalLayout } from './signal-layout.js';
 
 export const SIGNAL_PROPERTY_FIELDS = Object.freeze([
   'name', 'startBit', 'length', 'factor', 'offset', 'min', 'max', 'signed', 'unit', 'comment',
 ]);
-export const SIGNAL_TEXT_MAX_BYTES = 64 * 1024;
+export { PROPERTY_TEXT_MAX_BYTES as SIGNAL_TEXT_MAX_BYTES } from './property-text-codec.js';
 
 export function serializeSignalProperties(signal, format = 'json') {
   const properties = Object.fromEntries(SIGNAL_PROPERTY_FIELDS.map((field) => [field, signal[field]]));
   properties.min ??= null;
   properties.max ??= null;
-  if (format === 'yaml') {
-    return stringify(properties, { version: '1.2', schema: 'core', lineWidth: 0, blockQuote: 'literal' });
-  }
-  if (format !== 'json') throw new Error(`不支持的文本格式：${format}。`);
-  return `${JSON.stringify(properties, null, 2)}\n`;
+  return serializePropertyText(properties, format);
 }
 
 export function parseSignalProperties(text, message, format = 'json') {
+  const parsed = parsePropertyText(text, format, 'Signal');
+  if (parsed.errors.length) return parsed;
   const errors = [];
   const invalid = () => ({ value: null, errors });
-  if (format !== 'json' && format !== 'yaml') {
-    errors.push(`不支持的文本格式：${format}。`);
-    return invalid();
-  }
-  if (new TextEncoder().encode(text).length > SIGNAL_TEXT_MAX_BYTES) {
-    errors.push('文本不能超过 64 KiB。');
-    return invalid();
-  }
-
-  let properties;
-  try {
-    if (format === 'yaml') {
-      const document = parseDocument(text, {
-        version: '1.2', schema: 'core', strict: true, uniqueKeys: true, customTags: [], merge: false,
-      });
-      errors.push(...[...document.errors, ...document.warnings].map((error) => `YAML 语法错误：${error.message}`));
-      if (document.directives.yaml.version !== '1.2') errors.push('仅支持 YAML 1.2。');
-      visit(document, (_key, node) => {
-        if (isAlias(node) || node?.anchor || node?.tag) {
-          errors.push('YAML 不支持显式标签、锚点或别名。');
-          return visit.BREAK;
-        }
-      });
-      if (errors.length) return invalid();
-      properties = document.toJS({ maxAliasCount: 0 });
-    } else {
-      properties = JSON.parse(text);
-    }
-  } catch (error) {
-    errors.push(`${format.toUpperCase()} 语法错误：${error.message}`);
-    return invalid();
-  }
-  if (properties === null || typeof properties !== 'object' || Array.isArray(properties)) {
-    errors.push('文本必须是一个 Signal 属性对象。');
-    return invalid();
-  }
-
-  properties = { min: null, max: null, ...properties };
+  const properties = { min: null, max: null, ...parsed.value };
   for (const field of SIGNAL_PROPERTY_FIELDS) {
     if (!Object.hasOwn(properties, field)) errors.push(`缺少必要字段：${field}。`);
   }

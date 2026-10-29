@@ -31,11 +31,17 @@
 4. 通过“文件”导入 DBC 或完整架构 JSON。DBC 必须经向导确认，可选择目标 BUS，并对同名 ECU 新建、重命名或合并。
 5. 选中 ECU、BUS 或连线后导出 DBC；画布还可导出 JSON、SVG 或 PNG。架构会自动保存到浏览器本地存储。
 
-Signal 属性右上角提供表单、JSON、YAML 三个图标，可互相切换；底部图标支持复制、保存及丢弃草稿后重新载入，悬浮可查看名称。文本编辑区或其工具按钮获得焦点时，`Ctrl+S`（macOS 为 `Cmd+S`）保存到浏览器 IndexedDB；校验失败时按钮禁用，快捷键也不会保存。
+Signal 和 Message 属性右上角均提供表单、JSON、YAML 三个图标，可互相切换；底部图标支持复制、保存及丢弃草稿后重新载入，悬浮可查看名称。文本编辑区或其工具按钮获得焦点时，`Ctrl+S`（macOS 为 `Cmd+S`）保存到浏览器 IndexedDB；校验失败时按钮禁用，快捷键也不会保存。
 
-JSON 和 YAML 共用字段校验，必须包含 `name`、`startBit`、`length`、`factor`、`offset`、`signed`、`unit`、`comment`，不接受内部 `id` 或未知字段。`min`/`max` 为可选字段，省略或设为 `null` 表示不设置对应物理界限；自动生成的文本会包含这两个字段，未设置时值为 `null`。`unit`/`comment` 可为空字符串；数值、布尔值须使用所选格式对应的类型。文本最多 64 KiB，保存前同时检查 DLC、字节序和物理值上下限。
+Signal 的 JSON 和 YAML 共用字段校验，必须包含 `name`、`startBit`、`length`、`factor`、`offset`、`signed`、`unit`、`comment`，不接受内部 `id` 或未知字段。`min`/`max` 为可选字段，省略或设为 `null` 表示不设置对应物理界限；自动生成的文本会包含这两个字段，未设置时值为 `null`。`unit`/`comment` 可为空字符串；数值、布尔值须使用所选格式对应的类型。文本最多 64 KiB，保存前同时检查 DLC、字节序和物理值上下限。
 
-YAML 支持 `#` 注释和 `|` 多行字符串，仅接受单个 YAML 1.2 对象，拒绝重复键、显式标签、锚点和别名。`#` 注释不属于 Signal 属性，需要持久保留的说明应填写在 `comment` 字段中。底层存储结构和架构 JSON 导出格式保持不变。
+Message 文本必须包含 `name`、`protocol`、`id`、`txMode`、`periodMs`、`byteOrder`、`dlc`、`dlcMode`、`senders`、`receiverMode`、`receivers`、`comment`；不接受内部 `idHex`、`color`、`signals` 或未知字段，保存会保留原有子 Signal 和内部唯一标识。这里的 `id` 是 CAN ID 数值，不是 Message 的内部 UUID；可用十进制整数或无引号的十六进制数，例如 `0x7FF`，不接受字符串。Message 的 JSON 输入兼容 JSON5，允许十六进制数值；自动生成的 JSON 保持标准格式，`id` 使用十进制数字，自动生成的 YAML 则将 `id` 显示为 `0x` 前缀的十六进制数值，其他数字字段仍为十进制。Signal 的 JSON 解析保持严格标准 JSON。`dlc` 是 0-64 的整数字节数；事件模式的 `periodMs` 必须为 `null`，周期和混合模式为非负整数。文本保存不会自动裁剪 Signal，若新的 DLC 或字节序导致当前 Signal 越界则拒绝保存。
+
+Message 文本中的 `senders`、`receivers` 使用当前 BUS 上 ECU 的名称，而非 UUID；保存时解析为内部节点关联。名称必须精确匹配且在当前 BUS 上唯一，找不到或重名时禁止保存，不会猜测节点。`senders` 第一项为默认发送方。发送报文必须包含当前 ECU 作为发送方，节点接收模式必须有接收方；广播模式使用 `receiverMode: broadcast` 和空 `receivers`。J1939 协议还必须包含 `j1939` 对象，字段为 `pgn`、`priority`、`sa`、`da`；Priority 可为 0-7 或 `dont_care`，PDU2 的 DA 为 `broadcast`。保存前校验字段范围、收发方地址以及非 `dont_care` 模式下的 ID 一致性。
+
+表单的发送方／接收方选择器使用共享主题复选框及扁平取消、确认图标；悬浮可查看名称，支持键盘焦点和 Escape 取消。取消不应用临时选择，添加发送方保留当前广播接收模式。
+
+YAML 支持 `#` 注释和 `|` 多行字符串，仅接受单个 YAML 1.2 对象，拒绝重复键、显式标签、锚点和别名。`#` 注释不属于 Signal/Message 属性，需要持久保留的说明应填写在 `comment` 字段中。底层存储结构和架构 JSON 导出格式保持不变。
 
 JSON、YAML 分别保留草稿，切换格式不会隐式保存或把未保存内容转换到另一格式；同一 ECU 编辑器会话内切换 Signal、Message 或表单模式也会保留草稿。保存后，其他格式未改动的内容会刷新；已有草稿则保留并检查冲突，避免覆盖新值。关闭编辑器或刷新页面后未保存草稿不保留。复制操作只写入本机剪贴板，不会自动向第三方 AI 发送数据。
 

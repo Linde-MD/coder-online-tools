@@ -1,174 +1,26 @@
 <template>
-  <section class="signal-text-editor" aria-label="Signal 文本编辑" @keydown="handleKeydown">
-    <label :for="id" class="signal-text-label">Signal {{ formatLabel }}</label>
-    <textarea
-      :id="id"
-      v-model="draft.text"
-      class="form-control signal-text-input"
-      :aria-label="`Signal 属性 ${formatLabel}`"
-      :aria-invalid="errors.length > 0"
-      :aria-describedby="errors.length ? `${id}-errors` : undefined"
-      :readonly="draft.saving"
-      spellcheck="false"
-      autocapitalize="off"
-      autocomplete="off"
-      wrap="off"
-    ></textarea>
-    <ul v-if="errors.length" :id="`${id}-errors`" class="signal-text-errors" role="alert">
-      <li v-for="(error, index) in errors" :key="index">{{ error }}</li>
-    </ul>
-    <div class="signal-text-footer">
-      <span class="signal-text-status" role="status" aria-live="polite">
-        {{ draft.saving ? '保存中' : draft.notice || (dirty ? '未保存' : '未修改') }}
-      </span>
-      <div class="signal-text-actions">
-        <button
-          type="button"
-          class="signal-text-action"
-          title="丢弃草稿并重新载入"
-          aria-label="丢弃草稿并重新载入"
-          :disabled="draft.saving || (!dirty && !hasConflict)"
-          @click="reload"
-        ><RotateCcw :size="18" aria-hidden="true" /></button>
-        <button
-          type="button"
-          class="signal-text-action"
-          title="复制文本"
-          aria-label="复制文本"
-          :disabled="draft.copying"
-          @click="copy"
-        ><Copy :size="18" aria-hidden="true" /></button>
-        <button
-          type="button"
-          class="signal-text-action signal-text-save"
-          title="保存 Signal（Ctrl+S）"
-          aria-label="保存 Signal（Ctrl+S）"
-          :disabled="!canSave"
-          :aria-busy="draft.saving"
-          @click="save"
-        ><Save :size="18" aria-hidden="true" /></button>
-      </div>
-    </div>
-  </section>
+  <PropertyTextEditor
+    ref="editorRef" :entity="signal" label="Signal" :adapter="adapter" :context="{ message }"
+    :format="format" :drafts="drafts" :persist-changes="persistChanges"
+  />
 </template>
 
 <script setup>
-import { computed, toRef, useId } from 'vue';
-import { Copy, RotateCcw, Save } from '@lucide/vue';
-import { useSignalTextEditor } from '../../app/composables/useSignalTextEditor.js';
+import { ref } from 'vue';
+import PropertyTextEditor from './PropertyTextEditor.vue';
+import { parseSignalProperties, serializeSignalProperties } from '../../services/signal-properties-text.js';
 
-const props = defineProps({
+defineProps({
   signal: { type: Object, required: true },
   message: { type: Object, required: true },
   format: { type: String, default: 'json', validator: (value) => ['json', 'yaml'].includes(value) },
   drafts: { type: Map, required: true },
   persistChanges: { type: Function, required: true },
 });
-const id = useId();
-const formatLabel = computed(() => props.format.toUpperCase());
-const { draft, dirty, errors, canSave, hasConflict, save, copy, reload } = useSignalTextEditor({
-  signal: toRef(props, 'signal'),
-  message: toRef(props, 'message'),
-  format: toRef(props, 'format'),
-  drafts: props.drafts,
-  persistChanges: () => props.persistChanges(),
-});
-defineExpose({ save });
-
-function handleKeydown(event) {
-  if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 's') {
-    event.preventDefault();
-    event.stopPropagation();
-    save();
-  }
-}
+const editorRef = ref(null);
+const adapter = {
+  serialize: serializeSignalProperties,
+  parse: (text, context, format) => parseSignalProperties(text, context.message, format),
+};
+defineExpose({ save: () => editorRef.value?.save() });
 </script>
-
-<style scoped>
-.signal-text-editor {
-  min-width: 0;
-}
-
-.signal-text-label {
-  display: block;
-  margin-bottom: 6px;
-  color: var(--color-body);
-  font-size: 12px;
-}
-
-.signal-text-input {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
-  min-height: 288px;
-  resize: vertical;
-  overflow: auto;
-  font-family: var(--font-code);
-  font-size: 12px;
-  line-height: 1.6;
-  tab-size: 2;
-}
-
-.signal-text-input[aria-invalid='true'] {
-  border-color: var(--bs-danger);
-}
-
-.signal-text-errors {
-  margin: 8px 0;
-  padding-left: 20px;
-  color: var(--color-body);
-  font-size: 12px;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-
-.signal-text-footer,
-.signal-text-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.signal-text-footer {
-  justify-content: space-between;
-  flex-wrap: wrap;
-  margin-top: 8px;
-}
-
-.signal-text-status {
-  color: var(--color-muted);
-  font-size: 12px;
-}
-
-.signal-text-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-sm);
-  color: var(--color-body);
-  background: transparent;
-  cursor: pointer;
-}
-
-.signal-text-save {
-  color: var(--color-primary-active);
-}
-
-.signal-text-action:hover:not(:disabled) {
-  background: var(--color-surface-soft);
-}
-
-.signal-text-action:focus-visible {
-  outline: 2px solid var(--color-primary-active);
-  outline-offset: 2px;
-}
-
-.signal-text-action:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-</style>
