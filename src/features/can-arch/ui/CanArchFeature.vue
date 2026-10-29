@@ -303,6 +303,7 @@
             :bus-tabs="ecuMessageEditorBusTabs"
             :height="editorPanelHeight"
             :ecu-nodes="nodes"
+            :persist-changes="persistNodesNow"
             @close="closeEcuMessageEditor"
             @switch-ecu="switchEcuInEditor"
           />
@@ -2088,7 +2089,7 @@ function normalizeBusColor(value, fallback = BUS_COLOR_POOL[0]) {
 }
 
 async function persistNodesNow() {
-  if (!storageReady.value) return;
+  if (!storageReady.value) return false;
   try {
     const pendingWrite = topologyRepository.save({
       nodes: cloneNodesSnapshot(nodes.value),
@@ -2098,8 +2099,10 @@ async function persistNodesNow() {
     lastPersistAt = Date.now();
     persistPending = false;
     await pendingWrite;
+    return true;
   } catch (error) {
     setStatus(`架构保存失败：${error?.message || '存储不可用'}`, true);
+    return false;
   }
 }
 

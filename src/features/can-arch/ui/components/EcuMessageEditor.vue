@@ -519,8 +519,11 @@
 
         <template v-else>
           <SignalPropertiesEditor
+            v-model:mode="signalPropertyMode"
             :signal="selectedEntity.entity"
             :message="selectedEntity.message"
+            :drafts="signalTextDrafts"
+            :persist-changes="props.persistChanges"
             @physical-limit-blur="onSignalPhysicalLimitBlur(selectedEntity.entity, $event)"
           />
         </template>
@@ -645,9 +648,15 @@ const props = defineProps({
     type: Array,
     default: () => [],
   },
+  persistChanges: {
+    type: Function,
+    required: true,
+  },
 });
 
 const emit = defineEmits(['close', 'switch-ecu']);
+const signalPropertyMode = ref('form');
+const signalTextDrafts = new Map();
 
 function onEcuSwitch(ecuId) {
   if (!ecuId || ecuId === props.ecu?.id) return;
