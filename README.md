@@ -31,15 +31,25 @@
 4. 通过“文件”导入 DBC 或完整架构 JSON。DBC 必须经向导确认，可选择目标 BUS，并对同名 ECU 新建、重命名或合并。
 5. 选中 ECU、BUS 或连线后导出 DBC；画布还可导出 JSON、SVG 或 PNG。架构会自动保存到浏览器本地存储。
 
-Signal 和 Message 属性右上角均提供表单、JSON、YAML 三个图标，可互相切换；底部图标支持复制、保存及丢弃草稿后重新载入，悬浮可查看名称。文本编辑区或其工具按钮获得焦点时，`Ctrl+S`（macOS 为 `Cmd+S`）保存到浏览器 IndexedDB；校验失败时按钮禁用，快捷键也不会保存。
+Signal 和 Message 属性右上角均提供表单、JSON、YAML 三个图标，可互相切换；文本模式使用 Monaco 编辑器，支持 `Ctrl+F` 查找和 `Ctrl+H` 查找替换。底部图标支持复制、保存及丢弃草稿后重新载入，悬浮可查看名称。文本编辑区或其工具按钮获得焦点时，`Ctrl+S`（macOS 为 `Cmd+S`）保存到浏览器 IndexedDB；校验失败时按钮禁用，快捷键也不会保存。
 
 Signal 的 JSON 和 YAML 共用字段校验，必须包含 `name`、`startBit`、`length`、`factor`、`offset`、`signed`、`unit`、`comment`，不接受内部 `id` 或未知字段。`min`/`max` 为可选字段，省略或设为 `null` 表示不设置对应物理界限；自动生成的文本会包含这两个字段，未设置时值为 `null`。`unit`/`comment` 可为空字符串；数值、布尔值须使用所选格式对应的类型。文本最多 64 KiB，保存前同时检查 DLC、字节序和物理值上下限。
 
-Message 文本必须包含 `name`、`protocol`、`id`、`txMode`、`periodMs`、`byteOrder`、`dlc`、`dlcMode`、`senders`、`receiverMode`、`receivers`、`comment`；不接受内部 `idHex`、`color`、`signals` 或未知字段，保存会保留原有子 Signal 和内部唯一标识。这里的 `id` 是 CAN ID 数值，不是 Message 的内部 UUID；可用十进制整数或无引号的十六进制数，例如 `0x7FF`，不接受字符串。Message 的 JSON 输入兼容 JSON5，允许十六进制数值；自动生成的 JSON 保持标准格式，`id` 使用十进制数字，自动生成的 YAML 则将 `id` 显示为 `0x` 前缀的十六进制数值，其他数字字段仍为十进制。Signal 的 JSON 解析保持严格标准 JSON。`dlc` 是 0-64 的整数字节数；事件模式的 `periodMs` 必须为 `null`，周期和混合模式为非负整数。文本保存不会自动裁剪 Signal，若新的 DLC 或字节序导致当前 Signal 越界则拒绝保存。
+Message 的单独属性文本必须包含 `name`、`protocol`、`id`、`txMode`、`periodMs`、`byteOrder`、`dlc`、`dlcMode`、`senders`、`receiverMode`、`receivers`、`comment`；不接受内部 `idHex`、`color`、`signals` 或未知字段，保存会保留原有子 Signal 和内部唯一标识。这里的 `id` 是 CAN ID 数值，不是 Message 的内部 UUID；可用十进制整数或无引号的十六进制数，例如 `0x7FF`，不接受字符串。Message 的 JSON 输入兼容 JSON5，允许十六进制数值；自动生成的 JSON 保持标准格式，`id` 使用十进制数字，自动生成的 YAML 则将 `id` 显示为 `0x` 前缀的十六进制数值，其他数字字段仍为十进制。单个 Signal 的 JSON 模式保持严格标准 JSON。`dlc` 是 0-64 的整数字节数；事件模式的 `periodMs` 必须为 `null`，周期和混合模式为非负整数。文本保存不会自动裁剪 Signal，若新的 DLC 或字节序导致当前 Signal 越界则拒绝保存。
 
 Message 文本中的 `senders`、`receivers` 使用当前 BUS 上 ECU 的名称，而非 UUID；保存时解析为内部节点关联。名称必须精确匹配且在当前 BUS 上唯一，找不到或重名时禁止保存，不会猜测节点。`senders` 第一项为默认发送方。发送报文必须包含当前 ECU 作为发送方，节点接收模式必须有接收方；广播模式使用 `receiverMode: broadcast` 和空 `receivers`。J1939 协议还必须包含 `j1939` 对象，字段为 `pgn`、`priority`、`sa`、`da`；Priority 可为 0-7 或 `dont_care`，PDU2 的 DA 为 `broadcast`。保存前校验字段范围、收发方地址以及非 `dont_care` 模式下的 ID 一致性。
 
 表单的发送方／接收方选择器使用共享主题复选框及扁平取消、确认图标；悬浮可查看名称，支持键盘焦点和 Escape 取消。取消不应用临时选择，添加发送方保留当前广播接收模式。
+
+在报文卡片上右键，选择“编辑 Message 与全部 Signal”，会在右侧打开完整报文编辑器，默认 YAML，也可切换 JSON。文档包含上述 Message 字段以及必需的 `signals` 数组，每项使用 Signal 的公开属性字段，不包含内部 UUID；沿用 JSON5 输入兼容、YAML 十六进制 CAN ID、ECU 名称关联、复制和 `Ctrl+S` 保存。顶部返回图标可回到普通属性编辑。
+
+完整编辑器使用紧凑单行工具栏，文本区填满剩余高度，底部保存／复制栏始终可见；错误列表局部滚动，不挤占整块编辑区。拖拽顶部报文名称栏可从右侧分离为页面内的独立浮动窗口，也可点击右上角“独立窗口”图标。浮动后继续拖标题栏移动，拖右下角手柄调整宽高；拖到工作区右侧边缘出现停靠预览后松手，可恢复右侧停靠，也可点击“停靠到右侧”图标。
+
+窗口移动和缩放受当前视口约束，支持窄屏及应用全屏切换。标题栏聚焦时可用方向键移动，右下角手柄聚焦时可用方向键缩放，按住 Shift 加大步长。停靠／浮动切换不会重新创建文本输入框，保留未保存草稿、光标选区、焦点和内部滚动位置；保存与校验规则不变。关闭完整编辑器时释放拖拽、缩放和视口观察监听。
+
+`signals` 是保存后的完整列表，而非增量补丁：移除条目即删除该 Signal，空数组表示删除全部 Signal，数组顺序就是保存顺序。与原列表中唯一同名 Signal 匹配的条目保留内部 ID；新增或重命名条目分配新 ID，Message 的内部 ID 不变。最多 512 项，整份文本仍限制 64 KiB。所有字段、重复名称、位重叠和范围检查均通过后，Message 与 Signal 才一次保存；容量、字节序和 Signal 位置可以在同一次编辑中一起调整，按最终草稿校验。存储失败会回滚原属性及原 Signal 数组，草稿保留以便重试。
+
+完整编辑与单独属性编辑分别缓存草稿，不会互相覆盖；如果草稿期间原报文或任一 Signal 被其他操作修改，会阻止旧草稿保存，需明确重新载入后再编辑。
 
 YAML 支持 `#` 注释和 `|` 多行字符串，仅接受单个 YAML 1.2 对象，拒绝重复键、显式标签、锚点和别名。`#` 注释不属于 Signal/Message 属性，需要持久保留的说明应填写在 `comment` 字段中。底层存储结构和架构 JSON 导出格式保持不变。
 

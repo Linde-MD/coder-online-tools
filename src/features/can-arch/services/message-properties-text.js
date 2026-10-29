@@ -140,7 +140,11 @@ function normalizeJ1939(properties, context, rawId, errors) {
 export function parseMessageProperties(text, context = {}, format = 'json') {
   const parsed = parsePropertyText(text, format, 'Message', JSON5.parse);
   if (parsed.errors.length) return parsed;
-  const properties = parsed.value;
+  return validateMessageProperties(parsed.value, context);
+}
+
+export function validateMessageProperties(value, context = {}) {
+  const properties = { ...value };
   const errors = [];
   const invalid = () => ({ value: null, errors });
   const fields = properties.protocol === 'j1939' ? [...MESSAGE_PROPERTY_FIELDS, 'j1939'] : MESSAGE_PROPERTY_FIELDS;

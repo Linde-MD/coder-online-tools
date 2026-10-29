@@ -54,7 +54,7 @@
 
     <div v-if="!activeTab" class="ecu-msg-empty">当前 ECU 未连接任何 CAN BUS。</div>
 
-    <div v-else class="ecu-msg-main">
+    <div v-else ref="messageWorkspaceRef" class="ecu-msg-main">
       <div class="ecu-msg-body" :style="bodyStyle">
         <button
           v-if="collapsedLeft"
@@ -225,12 +225,22 @@
         </button>
       </div>
 
-      <div v-if="showPropsPanel" class="ecu-msg-props-splitter" @pointerdown="onPropsSplitPointerDown"></div>
-      <aside v-if="showPropsPanel" class="ecu-msg-props" :style="propsPanelStyle">
-        <div class="ecu-msg-props-title">属性编辑</div>
+      <div v-if="showPropsPanel && !(showMessageDocumentEditor && messageDocumentFloating)" class="ecu-msg-props-splitter" @pointerdown="onPropsSplitPointerDown"></div>
+      <aside
+        v-if="showPropsPanel" class="ecu-msg-props"
+        :class="{ 'has-document-editor': showMessageDocumentEditor, 'has-floating-document': showMessageDocumentEditor && messageDocumentFloating }"
+        :style="propsPanelStyle"
+      >
+        <div v-if="!showMessageDocumentEditor" class="ecu-msg-props-title">属性编辑</div>
 
+        <MessageDocumentEditor
+          v-if="showMessageDocumentEditor" v-model:mode="messageDocumentMode" v-model:floating="messageDocumentFloating"
+          :message="selectedEntity.entity" :participants="messageTextParticipants" :current-ecu-id="props.ecu.id"
+          :pane="selectedEntity.pane" :drafts="messageDocumentDrafts" :persist-changes="props.persistChanges"
+          :dock-root="messageWorkspaceRef" :dock-width="propsPanelWidth" @close="closeMessageDocumentEditor"
+        />
         <MessagePropertiesEditor
-          v-if="selectedEntity.type === 'message'"
+          v-else-if="selectedEntity.type === 'message'"
           v-model:mode="messagePropertyMode"
           :message="selectedEntity.entity"
           :participants="messageTextParticipants"
@@ -567,6 +577,7 @@
         <button v-if="contextMenu.target === 'pane'" class="ecu-msg-context-item" type="button" @click="addMessageAtPane(contextMenu.pane)">新增 Message</button>
         <button v-if="contextMenu.target === 'pane'" class="ecu-msg-context-item" type="button" @click="pasteAt(contextMenu.pane)">粘贴</button>
         <button v-if="contextMenu.target === 'message'" class="ecu-msg-context-item" type="button" @click="addSignalToContextMessage">在此 Message 下新增 Signal</button>
+        <button v-if="contextMenu.target === 'message'" class="ecu-msg-context-item" type="button" @click="openMessageDocumentEditor">编辑 Message 与全部 Signal</button>
         <button v-if="contextMenu.target !== 'pane'" class="ecu-msg-context-item" type="button" @click="copySelection">复制</button>
         <button v-if="contextMenu.target !== 'pane'" class="ecu-msg-context-item danger" type="button" @click="deleteSelection">删除</button>
       </div>
@@ -592,6 +603,7 @@ import EcuMessageFilterPanel from './EcuMessageFilterPanel.vue';
 import SignalPropertiesEditor from './SignalPropertiesEditor.vue';
 import MessagePropertiesEditor from './MessagePropertiesEditor.vue';
 import MessageParticipantPicker from './MessageParticipantPicker.vue';
+import MessageDocumentEditor from './MessageDocumentEditor.vue';
 import { filterPanelPositionCache, saveFilterPanelOpen } from '@/features/can-arch/app/composables/useFilterPanelCache.js';
 import { decodeJ1939Id, encodeJ1939IdFromPgn, formatHex, parseNumberInput } from '@/shared/utils/j1939.js';
 
@@ -631,6 +643,10 @@ const signalPropertyMode = ref('form');
 const signalTextDrafts = new Map();
 const messagePropertyMode = ref('form');
 const messageTextDrafts = new Map();
+const messageDocumentKey = ref('');
+const messageDocumentMode = ref('yaml');
+const messageDocumentDrafts = new Map();
+const messageDocumentFloating = ref(false);
 
 function onEcuSwitch(ecuId) {
   if (!ecuId || ecuId === props.ecu?.id) return;
@@ -684,6 +700,7 @@ const {
   openRowContextMenu,
   addMessageAtPane,
   addSignalToContextMessage,
+  selectContextMessage,
   deleteSelection,
   copySelection,
   pasteAt,
@@ -787,6 +804,7 @@ const collapsedLeft = ref(false);
 const collapsedRight = ref(false);
 const splitDrag = ref(null);
 const editorRef = ref(null);
+const messageWorkspaceRef = ref(null);
 const filterPanelOpen = ref(filterPanelPositionCache.open);
 
 const propsPanelWidth = ref(propsPanelWidthCache.width);
@@ -828,6 +846,7 @@ const bodyStyle = computed(() => {
 });
 
 const propsPanelStyle = computed(() => {
+  if (showMessageDocumentEditor.value && messageDocumentFloating.value) return { width: '0px', flexShrink: 0 };
   return { width: `${propsPanelWidth.value}px`, flexShrink: 0 };
 });
 
@@ -851,6 +870,27 @@ const participantOptions = computed(() => {
 });
 
 const messageTextParticipants = computed(() => [props.ecu, ...peerOptions.value]);
+
+const selectedMessageKey = computed(() => selectedEntity.value?.type === 'message'
+  ? `${selectedEntity.value.pane}|${selectedEntity.value.entity.id}` : '');
+const showMessageDocumentEditor = computed(() => !!messageDocumentKey.value && messageDocumentKey.value === selectedMessageKey.value);
+watch(selectedMessageKey, (key) => {
+  if (key !== messageDocumentKey.value) closeMessageDocumentEditor();
+}, { flush: 'sync' });
+
+function closeMessageDocumentEditor() {
+  messageDocumentKey.value = '';
+  messageDocumentFloating.value = false;
+}
+
+function openMessageDocumentEditor() {
+  const message = selectContextMessage();
+  if (!message) return;
+  messageDocumentKey.value = `${contextMenu.pane}|${message.id}`;
+  closeParticipantPicker('senders');
+  closeParticipantPicker('receivers');
+  closeSignalLayoutModal();
+}
 
 const selectedMessageEntity = computed(() => {
   if (selectedEntity.value?.type !== 'message') return null;
@@ -2649,6 +2689,15 @@ defineExpose({
   color: #5a4432;
   margin-bottom: 6px;
 }
+
+.ecu-msg-props.has-document-editor {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding: 4px;
+}
+.ecu-msg-props.has-floating-document { padding: 0; border: 0; overflow: visible; }
 
 .ecu-prop-grid {
   display: grid;

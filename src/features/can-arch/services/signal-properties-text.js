@@ -16,9 +16,13 @@ export function serializeSignalProperties(signal, format = 'json') {
 export function parseSignalProperties(text, message, format = 'json') {
   const parsed = parsePropertyText(text, format, 'Signal');
   if (parsed.errors.length) return parsed;
+  return validateSignalProperties(parsed.value, message);
+}
+
+export function validateSignalProperties(value, message) {
   const errors = [];
   const invalid = () => ({ value: null, errors });
-  const properties = { min: null, max: null, ...parsed.value };
+  const properties = { min: null, max: null, ...value };
   for (const field of SIGNAL_PROPERTY_FIELDS) {
     if (!Object.hasOwn(properties, field)) errors.push(`缺少必要字段：${field}。`);
   }

@@ -1,19 +1,18 @@
 <template>
-  <section class="property-text-editor" :aria-label="`${label} 文本编辑`" @keydown="handleKeydown">
-    <label :for="id" class="property-text-label">{{ label }} {{ formatLabel }}</label>
-    <textarea
-      :id="id"
-      v-model="draft.text"
-      class="form-control property-text-input"
-      :aria-label="`${label} 属性 ${formatLabel}`"
-      :aria-invalid="errors.length > 0"
-      :aria-describedby="errors.length ? `${id}-errors` : undefined"
-      :readonly="draft.saving"
-      spellcheck="false"
-      autocapitalize="off"
-      autocomplete="off"
-      wrap="off"
-    ></textarea>
+  <section class="property-text-editor" :class="{ 'is-expanded': fillHeight }" :aria-label="`${label} 文本编辑`" @keydown.capture="handleKeydown">
+    <label v-if="!fillHeight" :for="id" class="property-text-label">{{ label }} {{ formatLabel }}</label>
+    <div class="property-text-editor-host" :class="{ 'has-errors': errors.length > 0 }">
+      <div
+        ref="monacoHost" class="property-text-monaco" :aria-label="`${label} 属性 ${formatLabel}`"
+        :aria-invalid="errors.length > 0" :aria-describedby="errors.length ? `${id}-errors` : undefined"
+      ></div>
+      <div v-if="loadingEditor" class="property-text-loading" role="status">正在加载代码编辑器…</div>
+      <div v-if="loadError" class="property-text-load-error" role="alert">
+        <span>{{ loadError }}</span>
+        <button type="button" class="property-text-retry" @click="loadEditor">重试</button>
+        <textarea v-model="draft.text" class="form-control property-text-fallback" :aria-label="`${label} 属性文本`"></textarea>
+      </div>
+    </div>
     <ul v-if="errors.length" :id="`${id}-errors`" class="property-text-errors" role="alert">
       <li v-for="(error, index) in errors" :key="index">{{ error }}</li>
     </ul>
@@ -41,7 +40,7 @@
 </template>
 
 <script setup>
-import { computed, toRef, useId } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, toRef, useId, watch } from 'vue';
 import { Copy, RotateCcw, Save } from '@lucide/vue';
 import { usePropertyTextEditor } from '../../app/composables/usePropertyTextEditor.js';
 
@@ -53,8 +52,12 @@ const props = defineProps({
   format: { type: String, default: 'json', validator: (value) => ['json', 'yaml'].includes(value) },
   drafts: { type: Map, required: true },
   persistChanges: { type: Function, required: true },
+  fillHeight: { type: Boolean, default: false },
 });
 const id = useId();
+const monacoHost = ref(null);
+const loadingEditor = ref(false);
+const loadError = ref('');
 const formatLabel = computed(() => props.format.toUpperCase());
 const { draft, dirty, errors, canSave, hasConflict, save, copy, reload } = usePropertyTextEditor({
   entity: toRef(props, 'entity'),
@@ -68,36 +71,206 @@ const { draft, dirty, errors, canSave, hasConflict, save, copy, reload } = usePr
 });
 defineExpose({ save });
 
-function handleKeydown(event) {
-  if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 's') {
-    event.preventDefault();
-    event.stopPropagation();
-    save();
+let monacoApi = null;
+let monacoEditor = null;
+let resizeObserver = null;
+let overflowTargetObserver = null;
+let disposed = false;
+let syncingFromDraft = false;
+
+function resolveOverflowWidgetsTarget() {
+  return document.fullscreenElement
+    || monacoHost.value?.closest('.feature-panel.is-fullscreen')
+    || document.body;
+}
+
+function updateOverflowWidgetsTarget() {
+  monacoEditor?.updateOptions({ overflowWidgetsDomNode: resolveOverflowWidgetsTarget() });
+}
+
+async function loadEditor() {
+  if (loadingEditor.value || disposed) return;
+  loadingEditor.value = true;
+  loadError.value = '';
+  try {
+    const [monacoModule, workerModule] = await Promise.all([
+      import('monaco-editor/editor/editor.api'),
+      import('monaco-editor/editor/editor.worker?worker'),
+      import('monaco-editor/editor/contrib/find/browser/findController'),
+      import('monaco-editor/features/codicon/register'),
+    ]);
+    if (disposed || !monacoHost.value) return;
+    monacoApi = monacoModule;
+    const global = globalThis;
+    global.MonacoEnvironment ||= {};
+    global.MonacoEnvironment.getWorker ||= () => new workerModule.default();
+    monacoApi.editor.defineTheme('property-text-warm', {
+      base: 'vs',
+      inherit: true,
+      rules: [],
+      colors: {
+        'editor.background': '#FFFCF8',
+        'editor.foreground': '#3D3D3A',
+        'editorLineNumber.foreground': '#8E8B82',
+        'editorLineNumber.activeForeground': '#6C6A64',
+        'editorCursor.foreground': '#A9583E',
+        'editor.selectionBackground': '#EFD8C8',
+        'editor.inactiveSelectionBackground': '#F5E8DE',
+        'editorIndentGuide.background1': '#E8DCCF',
+        'editorIndentGuide.activeBackground1': '#D3B7A2',
+        'editorGutter.background': '#FFFCF8',
+      },
+    });
+    monacoEditor = monacoApi.editor.create(monacoHost.value, {
+      value: draft.value.text,
+      language: 'plaintext',
+      theme: 'property-text-warm',
+      automaticLayout: false,
+      minimap: { enabled: false },
+      lineNumbers: 'on',
+      wordWrap: 'off',
+      scrollBeyondLastLine: false,
+      fontFamily: getComputedStyle(monacoHost.value).getPropertyValue('--font-code').trim().replaceAll('"', '') || 'Consolas, monospace',
+      fontSize: 12,
+      lineHeight: 19,
+      tabSize: 2,
+      insertSpaces: true,
+      readOnly: draft.value.saving,
+      renderLineHighlight: 'line',
+      overviewRulerLanes: 0,
+      scrollbar: { alwaysConsumeMouseWheel: false },
+      overflowWidgetsDomNode: resolveOverflowWidgetsTarget(),
+      ariaLabel: `${props.label} 属性 ${formatLabel.value}`,
+    });
+    monacoEditor.onDidChangeModelContent(() => {
+      if (syncingFromDraft || !monacoEditor) return;
+      draft.value.text = monacoEditor.getValue();
+    });
+    resizeObserver = new ResizeObserver(() => {
+      monacoEditor?.layout();
+      updateOverflowWidgetsTarget();
+    });
+    resizeObserver.observe(monacoHost.value);
+    const fullscreenRoot = monacoHost.value.closest('.feature-panel');
+    if (fullscreenRoot && typeof MutationObserver !== 'undefined') {
+      overflowTargetObserver = new MutationObserver(updateOverflowWidgetsTarget);
+      overflowTargetObserver.observe(fullscreenRoot, { attributes: true, attributeFilter: ['class'] });
+    }
+    document.addEventListener('fullscreenchange', updateOverflowWidgetsTarget);
+    monacoEditor.layout();
+  } catch (error) {
+    if (!disposed) loadError.value = `代码编辑器加载失败：${error?.message || '请检查网络或刷新重试。'}`;
+  } finally {
+    if (!disposed) loadingEditor.value = false;
   }
+}
+
+watch(() => draft.value.text, (value) => {
+  if (!monacoEditor || monacoEditor.getValue() === value) return;
+  syncingFromDraft = true;
+  monacoEditor.setValue(value);
+  syncingFromDraft = false;
+});
+
+watch(() => draft.value.saving, (saving) => {
+  monacoEditor?.updateOptions({ readOnly: saving });
+});
+
+onMounted(loadEditor);
+onBeforeUnmount(() => {
+  disposed = true;
+  resizeObserver?.disconnect();
+  overflowTargetObserver?.disconnect();
+  document.removeEventListener('fullscreenchange', updateOverflowWidgetsTarget);
+  monacoEditor?.dispose();
+  monacoEditor = null;
+  monacoApi = null;
+});
+
+function handleKeydown(event) {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+  const key = event.key.toLowerCase();
+  if (!['s', 'f', 'h'].includes(key)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (key === 's') save();
+  if (key === 'f') monacoEditor?.getAction('actions.find')?.run();
+  if (key === 'h') monacoEditor?.getAction('editor.action.startFindReplaceAction')?.run();
 }
 </script>
 
 <style scoped>
 .property-text-editor { min-width: 0; }
+.property-text-editor.is-expanded {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+}
+.property-text-editor.is-expanded .property-text-editor-host {
+  flex: 1 1 0;
+  min-height: 0;
+}
+.property-text-editor.is-expanded .property-text-monaco {
+  min-height: 0;
+}
+.property-text-editor.is-expanded .property-text-errors {
+  flex: 0 1 auto;
+  max-height: 120px;
+  overflow: auto;
+  margin: 4px 0;
+}
+.property-text-editor.is-expanded .property-text-footer {
+  flex: 0 0 auto;
+  margin-top: 4px;
+}
 .property-text-label {
   display: block;
   margin-bottom: 6px;
   color: var(--color-body);
   font-size: 12px;
 }
-.property-text-input {
+.property-text-editor-host {
+  position: relative;
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
   min-height: 288px;
-  resize: vertical;
-  overflow: auto;
-  font-family: var(--font-code);
-  font-size: 12px;
-  line-height: 1.6;
-  tab-size: 2;
+  overflow: visible;
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-md);
+  background: #fffcf8;
 }
-.property-text-input[aria-invalid='true'] { border-color: var(--bs-danger); }
+.property-text-monaco {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 288px;
+}
+.property-text-editor-host:focus-within { border-color: #d7a48d; }
+.property-text-editor-host.has-errors { border-color: var(--bs-danger); }
+.property-text-editor.is-expanded .property-text-monaco { height: 100%; }
+.property-text-loading,
+.property-text-load-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: #fffcf8;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+.property-text-load-error { flex-direction: column; gap: 8px; color: var(--color-body); }
+.property-text-fallback {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 180px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.property-text-retry { min-height: 40px; padding: 6px 12px; cursor: pointer; }
 .property-text-errors {
   margin: 8px 0;
   padding-left: 20px;

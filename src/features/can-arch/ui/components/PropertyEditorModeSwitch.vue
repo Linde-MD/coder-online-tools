@@ -1,9 +1,9 @@
 <template>
-  <div class="property-mode-toolbar">
-    <span class="property-mode-format">{{ modelValue === 'form' ? '' : modelValue === 'yaml' ? 'YAML' : 'JSON' }}</span>
+  <div class="property-mode-toolbar" :class="{ 'is-compact': compact }">
+    <span v-if="!compact" class="property-mode-format">{{ modelValue === 'form' ? '' : modelValue === 'yaml' ? 'YAML' : 'JSON' }}</span>
     <div class="property-mode-options" role="group" :aria-label="`${label} 编辑方式`">
       <button
-        v-for="option in options"
+        v-for="option in visibleOptions"
         :key="option.value"
         type="button"
         class="property-mode-button"
@@ -17,15 +17,22 @@
 </template>
 
 <script setup>
+import { computed } from 'vue';
 import { CodeXml, FileText, List } from '@lucide/vue';
 
-defineProps({ modelValue: { type: String, default: 'form' }, label: { type: String, required: true } });
+const props = defineProps({
+  modelValue: { type: String, default: 'form' },
+  label: { type: String, required: true },
+  showForm: { type: Boolean, default: true },
+  compact: { type: Boolean, default: false },
+});
 const emit = defineEmits(['update:modelValue']);
 const options = [
   { value: 'form', title: '表单编辑', icon: List },
   { value: 'text', title: '文本编辑（JSON）', icon: CodeXml },
   { value: 'yaml', title: '文本编辑（YAML）', icon: FileText },
 ];
+const visibleOptions = computed(() => options.filter((option) => props.showForm || option.value !== 'form'));
 </script>
 
 <style scoped>
@@ -38,6 +45,7 @@ const options = [
   justify-content: space-between;
   margin-bottom: 6px;
 }
+.property-mode-toolbar.is-compact { margin-bottom: 0; }
 .property-mode-format {
   color: var(--color-muted);
   font: 12px var(--font-code);

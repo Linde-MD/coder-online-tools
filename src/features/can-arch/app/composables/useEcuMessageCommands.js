@@ -87,6 +87,16 @@ export function useEcuMessageCommands({
     addSignalToMessageAtPane(pane, row.message);
   }
 
+  function selectContextMessage() {
+    const pane = contextMenu.pane;
+    const row = getRowsByPane(pane).find((item) => item.type === 'message' && item.message.id === contextMenu.messageId);
+    closeContextMenu();
+    if (!row) return null;
+    selectedPane.value = pane;
+    selectedKeys.value = [row.key];
+    return row.message;
+  }
+
   function removeSelectedFromList(rows, list) {
     const messageDeleteIds = new Set();
     const signalDeleteMap = new Map();
@@ -191,6 +201,7 @@ export function useEcuMessageCommands({
     openRowContextMenu,
     addMessageAtPane,
     addSignalToContextMessage,
+    selectContextMessage,
     deleteSelection,
     copySelection,
     cutSelection,
