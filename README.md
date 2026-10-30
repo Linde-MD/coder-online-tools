@@ -37,6 +37,8 @@ Signal 的 JSON 和 YAML 共用字段校验，必须包含 `name`、`startBit`�
 
 Message 的单独属性文本必须包含 `name`、`protocol`、`id`、`txMode`、`periodMs`、`byteOrder`、`dlc`、`dlcMode`、`senders`、`receiverMode`、`receivers`、`comment`；不接受内部 `idHex`、`color`、`signals` 或未知字段，保存会保留原有子 Signal 和内部唯一标识。这里的 `id` 是 CAN ID 数值，不是 Message 的内部 UUID；可用十进制整数或无引号的十六进制数，例如 `0x7FF`，不接受字符串。Message 的 JSON 输入兼容 JSON5，允许十六进制数值；自动生成的 JSON 保持标准格式，`id` 使用十进制数字，自动生成的 YAML 则将 `id` 显示为 `0x` 前缀的十六进制数值，其他数字字段仍为十进制。单个 Signal 的 JSON 模式保持严格标准 JSON。`dlc` 是 0-64 的整数字节数；事件模式的 `periodMs` 必须为 `null`，周期和混合模式为非负整数。文本保存不会自动裁剪 Signal，若新的 DLC 或字节序导致当前 Signal 越界则拒绝保存。
 
+J1939 报文卡片以 PGN 为主标识；当完整 CAN ID 在当前 ECU/BUS 的 RX 与 TX 列表中唯一时，同时显示 ID。优先级固定并不能单独保证 ID 唯一：ID 还包含源地址，PDU1 还包含目的地址；PGN 本身不包含这些字段。
+
 Message 文本中的 `senders`、`receivers` 使用当前 BUS 上 ECU 的名称，而非 UUID；保存时解析为内部节点关联。名称必须精确匹配且在当前 BUS 上唯一，找不到或重名时禁止保存，不会猜测节点。`senders` 第一项为默认发送方。每条报文必须至少有一个发送方；节点接收模式必须有接收方，广播模式使用 `receiverMode: broadcast` 和空 `receivers`。载入旧拓扑时会自动删除收发方配置不完整的报文并写回清理结果；DBC 导入遇到无法解析发送方或接收方的报文也会跳过。J1939 协议还必须包含 `j1939` 对象，字段为 `pgn`、`priority`、`sa`、`da`；Priority 可为 0-7 或 `dont_care`，PDU2 的 DA 为 `broadcast`。保存前校验字段范围、收发方地址以及非 `dont_care` 模式下的 ID 一致性。
 
 表单的发送方／接收方选择器使用共享主题复选框及扁平取消、确认图标；悬浮可查看名称，支持键盘焦点和 Escape 取消。取消不应用临时选择，添加发送方保留当前广播接收模式。

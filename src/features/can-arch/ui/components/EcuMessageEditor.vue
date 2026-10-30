@@ -114,7 +114,11 @@
             >
               <div class="ecu-msg-card-head" :style="cardHeadStyle(message)">
                 <div class="ecu-msg-card-id-row">
-                  <span class="ecu-msg-card-id">{{ message.idHex }}</span>
+                  <template v-if="message.protocol === 'j1939'">
+                    <span class="ecu-msg-card-id">PGN {{ getMessagePgnLabel(message) }}</span>
+                    <span v-if="isMessageIdUnique(message)" class="ecu-msg-card-id-secondary">ID {{ message.idHex }}</span>
+                  </template>
+                  <span v-else class="ecu-msg-card-id">{{ message.idHex }}</span>
                   <span
                     v-for="peer in getMessagePeers(message, 'rx')"
                     :key="peer.id"
@@ -195,7 +199,11 @@
             >
               <div class="ecu-msg-card-head" :style="cardHeadStyle(message)">
                 <div class="ecu-msg-card-id-row">
-                  <span class="ecu-msg-card-id">{{ message.idHex }}</span>
+                  <template v-if="message.protocol === 'j1939'">
+                    <span class="ecu-msg-card-id">PGN {{ getMessagePgnLabel(message) }}</span>
+                    <span v-if="isMessageIdUnique(message)" class="ecu-msg-card-id-secondary">ID {{ message.idHex }}</span>
+                  </template>
+                  <span v-else class="ecu-msg-card-id">{{ message.idHex }}</span>
                   <span
                     v-for="peer in getMessagePeers(message, 'tx')"
                     :key="peer.id"
@@ -2003,6 +2011,20 @@ function getMessagePeers(message, pane) {
     });
 }
 
+function getMessagePgnLabel(message) {
+  const configuredPgn = parseNumberInput(message?.j1939?.pgn);
+  const decodedId = decodeJ1939Id(parseNumberInput(message?.idHex));
+  const pgn = Number.isInteger(configuredPgn) ? configuredPgn : decodedId.valid ? decodedId.PGN : NaN;
+  return Number.isInteger(pgn) && pgn >= 0 && pgn <= 0x3FFFF ? formatHex(pgn, 5) : '未知';
+}
+
+function isMessageIdUnique(message) {
+  const id = parseNumberInput(message?.idHex);
+  if (!Number.isInteger(id)) return false;
+  return [...rxMessages.value, ...txMessages.value]
+    .filter((candidate) => parseNumberInput(candidate?.idHex) === id).length === 1;
+}
+
 function cardStyle(message, pane) {
   const color = message?.color || protocolColor(message?.protocol);
   const hasError = messageErrors.value?.has?.(message?.id);
@@ -2599,6 +2621,13 @@ defineExpose({
   opacity: 0.9;
   letter-spacing: 0.3px;
   flex-shrink: 0;
+}
+
+.ecu-msg-card-id-secondary {
+  font-size: 9px;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  opacity: 0.78;
+  white-space: nowrap;
 }
 
 .ecu-msg-peer-tag {
