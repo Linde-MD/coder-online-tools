@@ -5,6 +5,7 @@ import {
   DEFAULT_NODE_BASE_COLOR,
 } from './can-arch-constants.js';
 import { normalizeNodeBaseColor } from './can-arch-colors.js';
+import { isMessageWorkspaceEntryValid } from './message-receiver-state.js';
 import {
   normalizeIntegerList,
   normalizeLinkStyle,
@@ -29,10 +30,12 @@ export function cloneMessageWorkspaceSnapshot(workspace) {
     if (!store || typeof store !== 'object') continue;
     cloned[busId] = {
       rxMessages: Array.isArray(store.rxMessages)
-        ? store.rxMessages.map((msg) => (typeof msg?.toJSON === 'function' ? msg.toJSON() : { ...msg }))
+        ? store.rxMessages.filter(isMessageWorkspaceEntryValid)
+          .map((msg) => (typeof msg?.toJSON === 'function' ? msg.toJSON() : { ...msg }))
         : [],
       txMessages: Array.isArray(store.txMessages)
-        ? store.txMessages.map((msg) => (typeof msg?.toJSON === 'function' ? msg.toJSON() : { ...msg }))
+        ? store.txMessages.filter(isMessageWorkspaceEntryValid)
+          .map((msg) => (typeof msg?.toJSON === 'function' ? msg.toJSON() : { ...msg }))
         : [],
     };
   }
@@ -144,8 +147,12 @@ export function hydrateNodes(rawNodes, { nextNodePosition } = {}) {
           const store = item.messageWorkspace[busId];
           if (!store || typeof store !== 'object') continue;
           workspace[busId] = {
-            rxMessages: Array.isArray(store.rxMessages) ? store.rxMessages.map((msg) => ({ ...msg })) : [],
-            txMessages: Array.isArray(store.txMessages) ? store.txMessages.map((msg) => ({ ...msg })) : [],
+            rxMessages: Array.isArray(store.rxMessages)
+              ? store.rxMessages.filter(isMessageWorkspaceEntryValid).map((msg) => ({ ...msg }))
+              : [],
+            txMessages: Array.isArray(store.txMessages)
+              ? store.txMessages.filter(isMessageWorkspaceEntryValid).map((msg) => ({ ...msg }))
+              : [],
           };
         }
         node.messageWorkspace = workspace;

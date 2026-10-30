@@ -1,4 +1,5 @@
 import { detectMessageErrors } from '@/features/can-arch/app/composables/useEcuMessageWorkspace.js';
+import { isMessageWorkspaceEntryValid } from '@/features/can-arch/domain/message-receiver-state.js';
 
 const PROTOCOL_J1939 = 'J1939';
 const PROTOCOL_CANOPEN = 'CANOPEN';
@@ -604,7 +605,7 @@ export function parseDbcMessages(dbcText) {
     messages.push(currentMessage);
   }
 
-  return messages;
+  return messages.filter(isMessageWorkspaceEntryValid);
 }
 
 export function normalizeIntegerList(input) {

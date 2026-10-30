@@ -74,11 +74,14 @@
         >
           <div class="ecu-msg-pane-head">
             <strong>接收报文</strong>
-            <span class="ecu-msg-count">共 {{ filteredRxMessages.length }} 条</span>
+            <span class="ecu-msg-count">共 {{ rxCardsMode === 'form' ? filteredRxMessages.length : rxMessages.length }} 条</span>
             <label class="ecu-rx-broadcast-toggle" title="勾选后包含 broadcast 报文">
               <input v-model="includeRxBroadcast" type="checkbox">
               <span>含 broadcast</span>
             </label>
+            <PropertyEditorModeSwitch
+              v-model="rxCardsMode" label="接收报文显示方式" form-label="卡片视图" compact
+            />
             <div class="ecu-msg-sort-bar">
               <span class="ecu-msg-sort-label">排序</span>
               <span
@@ -98,7 +101,7 @@
             <button class="ecu-msg-collapse" type="button" title="收起接收区" @click="toggleCollapse('left')">◀</button>
           </div>
 
-          <div class="ecu-msg-cards" @contextmenu.prevent="openPaneContextMenu('rx', $event)" @click.self="clearSelection">
+          <div v-if="rxCardsMode === 'form'" class="ecu-msg-cards" @contextmenu.prevent="openPaneContextMenu('rx', $event)" @click.self="clearSelection">
             <div
               v-for="message in sortedRxMessages"
               :key="message.id"
@@ -139,6 +142,11 @@
               </div>
             </div>
           </div>
+          <MessageCardsTextEditor
+            v-else class="ecu-msg-cards-text-view" :mode="rxCardsMode" pane="rx" :ecu-id="props.ecu.id"
+            :bus-id="activeTab.busId" :messages="rxMessages" :participants="messageTextParticipants"
+            :drafts="messageCardsDrafts" :persist-changes="props.persistChanges"
+          />
         </section>
 
         <div v-if="!collapsedLeft && !collapsedRight" class="ecu-msg-splitter" @pointerdown="onSplitPointerDown"></div>
@@ -152,7 +160,10 @@
           <div class="ecu-msg-pane-head">
             <button class="ecu-msg-collapse" type="button" title="收起发送区" @click="toggleCollapse('right')">▶</button>
             <strong>发送报文</strong>
-            <span class="ecu-msg-count">共 {{ filteredTxMessages.length }} 条</span>
+            <span class="ecu-msg-count">共 {{ txCardsMode === 'form' ? filteredTxMessages.length : txMessages.length }} 条</span>
+            <PropertyEditorModeSwitch
+              v-model="txCardsMode" label="发送报文显示方式" form-label="卡片视图" compact
+            />
             <div class="ecu-msg-sort-bar">
               <span class="ecu-msg-sort-label">排序</span>
               <span
@@ -171,7 +182,7 @@
             </div>
           </div>
 
-          <div class="ecu-msg-cards" @contextmenu.prevent="openPaneContextMenu('tx', $event)" @click.self="clearSelection">
+          <div v-if="txCardsMode === 'form'" class="ecu-msg-cards" @contextmenu.prevent="openPaneContextMenu('tx', $event)" @click.self="clearSelection">
             <div
               v-for="message in sortedTxMessages"
               :key="message.id"
@@ -212,6 +223,11 @@
               </div>
             </div>
           </div>
+          <MessageCardsTextEditor
+            v-else class="ecu-msg-cards-text-view" :mode="txCardsMode" pane="tx" :ecu-id="props.ecu.id"
+            :bus-id="activeTab.busId" :messages="txMessages" :participants="messageTextParticipants"
+            :drafts="messageCardsDrafts" :persist-changes="props.persistChanges"
+          />
         </section>
 
         <button
@@ -604,6 +620,8 @@ import SignalPropertiesEditor from './SignalPropertiesEditor.vue';
 import MessagePropertiesEditor from './MessagePropertiesEditor.vue';
 import MessageParticipantPicker from './MessageParticipantPicker.vue';
 import MessageDocumentEditor from './MessageDocumentEditor.vue';
+import PropertyEditorModeSwitch from './PropertyEditorModeSwitch.vue';
+import MessageCardsTextEditor from './MessageCardsTextEditor.vue';
 import { filterPanelPositionCache, saveFilterPanelOpen } from '@/features/can-arch/app/composables/useFilterPanelCache.js';
 import { decodeJ1939Id, encodeJ1939IdFromPgn, formatHex, parseNumberInput } from '@/shared/utils/j1939.js';
 
@@ -647,6 +665,9 @@ const messageDocumentKey = ref('');
 const messageDocumentMode = ref('yaml');
 const messageDocumentDrafts = new Map();
 const messageDocumentFloating = ref(false);
+const rxCardsMode = ref('form');
+const txCardsMode = ref('form');
+const messageCardsDrafts = new Map();
 
 function onEcuSwitch(ecuId) {
   if (!ecuId || ecuId === props.ecu?.id) return;
@@ -870,6 +891,11 @@ const participantOptions = computed(() => {
 });
 
 const messageTextParticipants = computed(() => [props.ecu, ...peerOptions.value]);
+
+watch([() => props.ecu?.id, activeBusId], () => {
+  rxCardsMode.value = 'form';
+  txCardsMode.value = 'form';
+});
 
 const selectedMessageKey = computed(() => selectedEntity.value?.type === 'message'
   ? `${selectedEntity.value.pane}|${selectedEntity.value.entity.id}` : '');
@@ -2426,6 +2452,14 @@ defineExpose({
   padding: 16px;
   columns: 230px;
   column-gap: 16px;
+}
+
+.ecu-msg-cards-text-view {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .ecu-msg-card {

@@ -163,4 +163,21 @@ describe('can-arch-dbc', () => {
     expect(parsed.receiverMode).toBe('broadcast');
     expect(parsed.receivers).toEqual([]);
   });
+
+  it('discards messages with nodes receiver mode and no resolved receivers', () => {
+    const dbc = [
+      'VERSION ""',
+      'NS_ :',
+      'BS_:',
+      'BU_: ECU_A',
+      'BO_ 100 MSG_NO_RECEIVER: 8 ECU_A',
+      ' SG_ SIG_A : 0|8@1+ (1,0) [0|255] ""',
+      'BO_ 200 MSG_BROADCAST: 8 ECU_A',
+      ' SG_ SIG_B : 0|8@1+ (1,0) [0|255] "" Vector__XXX',
+    ].join('\n');
+
+    const messages = parseDbcMessages(dbc);
+    expect(messages.map((message) => message.name)).toEqual(['MSG_BROADCAST']);
+    expect(messages[0].receiverMode).toBe('broadcast');
+  });
 });

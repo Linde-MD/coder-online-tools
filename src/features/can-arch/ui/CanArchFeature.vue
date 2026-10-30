@@ -999,6 +999,7 @@ import { escapeXml } from '@/features/can-arch/domain/can-arch-xml.js';
 import { useMagneticHeader } from '@/features/can-arch/app/composables/useMagneticHeader.js';
 import { useNodeOperations } from '@/features/can-arch/app/composables/useNodeOperations.js';
 import { DexieRepository } from '@/features/can-arch/infra/DexieRepository.js';
+import { isMessageWorkspaceEntryValid } from '@/features/can-arch/domain/message-receiver-state.js';
 
 const topologyRepository = new DexieRepository(STORAGE_KEY);
 const storageReady = ref(false);
@@ -4096,7 +4097,9 @@ function confirmImportCandidates() {
             senderNode.messageWorkspace[targetBusId] = { rxMessages: [], txMessages: [] };
           }
           const txMsg = { ...msg, senders: [senderId], receivers: [...receiverIds] };
-          senderNode.messageWorkspace[targetBusId].txMessages.push(txMsg);
+          if (isMessageWorkspaceEntryValid(txMsg)) {
+            senderNode.messageWorkspace[targetBusId].txMessages.push(txMsg);
+          }
         }
       }
 

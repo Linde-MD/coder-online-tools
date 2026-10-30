@@ -8,8 +8,8 @@
         type="button"
         class="property-mode-button"
         :aria-pressed="modelValue === option.value"
-        :title="option.title"
-        :aria-label="option.title"
+        :title="option.value === 'form' ? formLabel : option.title"
+        :aria-label="option.value === 'form' ? formLabel : option.title"
         @click="emit('update:modelValue', option.value)"
       ><component :is="option.icon" :size="18" aria-hidden="true" /></button>
     </div>
@@ -25,6 +25,7 @@ const props = defineProps({
   label: { type: String, required: true },
   showForm: { type: Boolean, default: true },
   compact: { type: Boolean, default: false },
+  formLabel: { type: String, default: '表单编辑' },
 });
 const emit = defineEmits(['update:modelValue']);
 const options = [

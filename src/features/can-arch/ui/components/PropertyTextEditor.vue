@@ -1,7 +1,7 @@
 <template>
-  <section class="property-text-editor" :class="{ 'is-expanded': fillHeight }" :aria-label="`${label} 文本编辑`" @keydown.capture="handleKeydown">
+  <section ref="editorSection" class="property-text-editor" :class="{ 'is-expanded': fillHeight }" :aria-label="`${label} 文本编辑`">
     <label v-if="!fillHeight" :for="id" class="property-text-label">{{ label }} {{ formatLabel }}</label>
-    <div class="property-text-editor-host" :class="{ 'has-errors': errors.length > 0 }">
+    <div ref="editorHost" :id="`${id}-editor`" class="property-text-editor-host" :class="{ 'has-errors': errors.length > 0 }">
       <div
         ref="monacoHost" class="property-text-monaco" :aria-label="`${label} 属性 ${formatLabel}`"
         :aria-invalid="errors.length > 0" :aria-describedby="errors.length ? `${id}-errors` : undefined"
@@ -13,7 +13,18 @@
         <textarea v-model="draft.text" class="form-control property-text-fallback" :aria-label="`${label} 属性文本`"></textarea>
       </div>
     </div>
-    <ul v-if="errors.length" :id="`${id}-errors`" class="property-text-errors" role="alert">
+    <div
+      v-if="fillHeight && errors.length" ref="errorSplitter" class="property-text-splitter" role="separator"
+      aria-orientation="horizontal" :aria-label="`${label} 编辑区和错误列表高度`"
+      :aria-controls="`${id}-editor ${id}-errors`" :aria-valuemin="minimumErrorHeight"
+      :aria-valuemax="maximumErrorHeight" :aria-valuenow="currentErrorHeight" tabindex="0"
+      title="拖动调整编辑区与错误列表高度"
+      @pointerdown="onSplitterPointerDown" @pointermove="onSplitterPointerMove"
+      @pointerup="onSplitterPointerUp" @pointercancel="onSplitterPointerUp" @keydown="onSplitterKeydown"
+    ></div>
+    <ul v-if="errors.length" ref="errorList" :id="`${id}-errors`" class="property-text-errors" role="alert"
+      :class="{ 'is-resizable': fillHeight && errorHeight !== null }"
+      :style="errorHeight === null ? undefined : { '--property-text-errors-height': `${errorHeight}px` }">
       <li v-for="(error, index) in errors" :key="index">{{ error }}</li>
     </ul>
     <div class="property-text-footer">
@@ -54,7 +65,11 @@ const props = defineProps({
   persistChanges: { type: Function, required: true },
   fillHeight: { type: Boolean, default: false },
 });
+const jsonLanguageId = 'property-json5';
 const id = useId();
+const editorSection = ref(null);
+const errorSplitter = ref(null);
+const errorList = ref(null);
 const monacoHost = ref(null);
 const loadingEditor = ref(false);
 const loadError = ref('');
@@ -67,8 +82,17 @@ const { draft, dirty, errors, canSave, hasConflict, save, copy, reload } = usePr
   serialize: (entity, format) => props.adapter.serialize(entity, format),
   parse: (text, format) => props.adapter.parse(text, props.context, format),
   capture: (entity) => props.adapter.capture ? props.adapter.capture(entity) : JSON.parse(props.adapter.serialize(entity)),
+  apply: props.adapter.apply,
+  restore: props.adapter.restore,
   persistChanges: () => props.persistChanges(),
 });
+const minimumErrorHeight = 48;
+const minimumEditorHeight = 120;
+const maximumErrorHeight = ref(360);
+const errorHeight = ref(null);
+const splitterDrag = ref(null);
+const currentErrorHeight = computed(() => Math.round(errorHeight.value
+  ?? Math.min(120, Math.max(minimumErrorHeight, errors.value.length * 22))));
 defineExpose({ save });
 
 let monacoApi = null;
@@ -88,6 +112,58 @@ function updateOverflowWidgetsTarget() {
   monacoEditor?.updateOptions({ overflowWidgetsDomNode: resolveOverflowWidgetsTarget() });
 }
 
+function refreshEditorLayout() {
+  monacoEditor?.layout();
+  requestAnimationFrame(() => monacoEditor?.layout());
+}
+
+function registerJson5Language() {
+  if (monacoApi.languages.getLanguages().some(({ id: languageId }) => languageId === jsonLanguageId)) return;
+  monacoApi.languages.register({ id: jsonLanguageId, aliases: ['JSON', 'JSON5'] });
+}
+
+function registerJson5Tokenizer() {
+  monacoApi.languages.setMonarchTokensProvider(jsonLanguageId, {
+    tokenizer: {
+      root: [
+        [/\s+/, 'white'],
+        [/\/\/.*$/, 'comment'],
+        [/\/\*/, 'comment', '@comment'],
+        [/"(?:[^"\\]|\\.)*"(?=\s*:)/, 'string.key.json'],
+        [/'(?:[^'\\]|\\.)*'(?=\s*:)/, 'string.key.json'],
+        [/"(?:[^"\\]|\\.)*"/, 'string.value.json'],
+        [/'(?:[^'\\]|\\.)*'/, 'string.value.json'],
+        [/[{}()\[\]]/, '@brackets'],
+        [/[:,]/, 'delimiter'],
+        [/[A-Za-z_$][\w$]*(?=\s*:)/, 'string.key.json'],
+        [/[+-]?0[xX][\da-fA-F]+/, 'number.hex'],
+        [/[+-]?(?:Infinity|NaN)\b/, 'number'],
+        [/[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/, 'number'],
+        [/\b(?:true|false|null)\b/, 'keyword'],
+        [/[A-Za-z_$][\w$]*/, 'identifier'],
+      ],
+      comment: [
+        [/[^*/]+/, 'comment'],
+        [/\*\//, 'comment', '@pop'],
+        [/[*/]/, 'comment'],
+      ],
+    },
+  });
+  monacoApi.languages.setLanguageConfiguration(jsonLanguageId, {
+    brackets: [['{', '}'], ['[', ']']],
+    autoClosingPairs: [
+      { open: '{', close: '}' }, { open: '[', close: ']' },
+      { open: '"', close: '"' }, { open: "'", close: "'" },
+    ],
+  });
+}
+
+async function configureYamlLanguage() {
+  const { language, conf } = await import('monaco-editor/languages/definitions/yaml/yaml');
+  monacoApi.languages.setMonarchTokensProvider('yaml', language);
+  monacoApi.languages.setLanguageConfiguration('yaml', conf);
+}
+
 async function loadEditor() {
   if (loadingEditor.value || disposed) return;
   loadingEditor.value = true;
@@ -97,10 +173,20 @@ async function loadEditor() {
       import('monaco-editor/editor/editor.api'),
       import('monaco-editor/editor/editor.worker?worker'),
       import('monaco-editor/editor/contrib/find/browser/findController'),
+      import('monaco-editor/editor/contrib/folding/browser/folding'),
       import('monaco-editor/features/codicon/register'),
+      import('monaco-editor/languages/definitions/yaml/register'),
     ]);
     if (disposed || !monacoHost.value) return;
     monacoApi = monacoModule;
+    registerJson5Language();
+    const fontFamily = getComputedStyle(monacoHost.value)
+      .getPropertyValue('--font-code').trim() || 'Consolas, monospace';
+    const primaryFontFamily = fontFamily.split(',')[0].trim().replace(/^['"]|['"]$/g, '');
+    if (primaryFontFamily && document.fonts?.load) {
+      await document.fonts.load(`12px "${primaryFontFamily}"`);
+    }
+    if (disposed || !monacoHost.value) return;
     const global = globalThis;
     global.MonacoEnvironment ||= {};
     global.MonacoEnvironment.getWorker ||= () => new workerModule.default();
@@ -122,15 +208,18 @@ async function loadEditor() {
       },
     });
     monacoEditor = monacoApi.editor.create(monacoHost.value, {
-      value: draft.value.text,
+      value: '',
       language: 'plaintext',
       theme: 'property-text-warm',
       automaticLayout: false,
       minimap: { enabled: false },
       lineNumbers: 'on',
+      folding: true,
+      foldingStrategy: 'indentation',
+      showFoldingControls: 'always',
       wordWrap: 'off',
       scrollBeyondLastLine: false,
-      fontFamily: getComputedStyle(monacoHost.value).getPropertyValue('--font-code').trim().replaceAll('"', '') || 'Consolas, monospace',
+      fontFamily,
       fontSize: 12,
       lineHeight: 19,
       tabSize: 2,
@@ -142,6 +231,13 @@ async function loadEditor() {
       overflowWidgetsDomNode: resolveOverflowWidgetsTarget(),
       ariaLabel: `${props.label} 属性 ${formatLabel.value}`,
     });
+    monacoEditor.setValue(draft.value.text);
+    registerJson5Tokenizer();
+    if (props.format === 'yaml') await configureYamlLanguage();
+    monacoApi.editor.setModelLanguage(
+      monacoEditor.getModel(), props.format === 'yaml' ? 'yaml' : jsonLanguageId,
+    );
+    refreshEditorLayout();
     monacoEditor.onDidChangeModelContent(() => {
       if (syncingFromDraft || !monacoEditor) return;
       draft.value.text = monacoEditor.getValue();
@@ -170,15 +266,33 @@ watch(() => draft.value.text, (value) => {
   syncingFromDraft = true;
   monacoEditor.setValue(value);
   syncingFromDraft = false;
+  refreshEditorLayout();
 });
 
 watch(() => draft.value.saving, (saving) => {
   monacoEditor?.updateOptions({ readOnly: saving });
 });
 
-onMounted(loadEditor);
+watch(() => props.format, async (format) => {
+  const model = monacoEditor?.getModel();
+  if (!model || !monacoApi) return;
+  try {
+    if (format === 'yaml') await configureYamlLanguage();
+    if (!monacoEditor || props.format !== format) return;
+    monacoApi.editor.setModelLanguage(model, format === 'yaml' ? 'yaml' : jsonLanguageId);
+    refreshEditorLayout();
+  } catch (error) {
+    loadError.value = `代码编辑器语法加载失败：${error?.message || '请检查网络或刷新重试。'}`;
+  }
+});
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeydown, true);
+  loadEditor();
+});
 onBeforeUnmount(() => {
   disposed = true;
+  window.removeEventListener('keydown', handleKeydown, true);
   resizeObserver?.disconnect();
   overflowTargetObserver?.disconnect();
   document.removeEventListener('fullscreenchange', updateOverflowWidgetsTarget);
@@ -188,6 +302,11 @@ onBeforeUnmount(() => {
 });
 
 function handleKeydown(event) {
+  const eventTarget = event.target instanceof Node ? event.target : null;
+  const editorHasFocus = (eventTarget && editorSection.value?.contains(eventTarget))
+    || editorSection.value?.contains(document.activeElement)
+    || monacoEditor?.hasTextFocus();
+  if (!editorHasFocus) return;
   if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
   const key = event.key.toLowerCase();
   if (!['s', 'f', 'h'].includes(key)) return;
@@ -196,6 +315,56 @@ function handleKeydown(event) {
   if (key === 's') save();
   if (key === 'f') monacoEditor?.getAction('actions.find')?.run();
   if (key === 'h') monacoEditor?.getAction('editor.action.startFindReplaceAction')?.run();
+}
+
+function getMaximumErrorHeight() {
+  const sectionHeight = editorSection.value?.clientHeight || 0;
+  const footerHeight = editorSection.value?.querySelector('.property-text-footer')?.offsetHeight || 0;
+  const splitterHeight = errorSplitter.value?.offsetHeight || 18;
+  return Math.max(minimumErrorHeight, Math.min(360,
+    sectionHeight - footerHeight - splitterHeight - minimumEditorHeight));
+}
+
+function setErrorHeight(height) {
+  maximumErrorHeight.value = getMaximumErrorHeight();
+  errorHeight.value = Math.max(minimumErrorHeight,
+    Math.min(maximumErrorHeight.value, height));
+}
+
+function getCurrentErrorHeight() {
+  return errorHeight.value ?? errorList.value?.getBoundingClientRect().height ?? currentErrorHeight.value;
+}
+
+function onSplitterPointerDown(event) {
+  if (event.button !== 0 && event.pointerType === 'mouse') return;
+  event.preventDefault();
+  maximumErrorHeight.value = getMaximumErrorHeight();
+  splitterDrag.value = {
+    pointerId: event.pointerId,
+    startY: event.clientY,
+    startHeight: errorList.value?.getBoundingClientRect().height || currentErrorHeight.value,
+  };
+  errorSplitter.value?.setPointerCapture(event.pointerId);
+}
+
+function onSplitterPointerMove(event) {
+  if (!splitterDrag.value || splitterDrag.value.pointerId !== event.pointerId) return;
+  setErrorHeight(splitterDrag.value.startHeight - (event.clientY - splitterDrag.value.startY));
+}
+
+function onSplitterPointerUp(event) {
+  if (!splitterDrag.value || splitterDrag.value.pointerId !== event.pointerId) return;
+  splitterDrag.value = null;
+}
+
+function onSplitterKeydown(event) {
+  const step = event.shiftKey ? 40 : 10;
+  if (event.key === 'ArrowUp') setErrorHeight(getCurrentErrorHeight() + step);
+  else if (event.key === 'ArrowDown') setErrorHeight(getCurrentErrorHeight() - step);
+  else if (event.key === 'Home') setErrorHeight(minimumErrorHeight);
+  else if (event.key === 'End') setErrorHeight(getMaximumErrorHeight());
+  else return;
+  event.preventDefault();
 }
 </script>
 
@@ -209,7 +378,7 @@ function handleKeydown(event) {
 }
 .property-text-editor.is-expanded .property-text-editor-host {
   flex: 1 1 0;
-  min-height: 0;
+  min-height: 120px;
 }
 .property-text-editor.is-expanded .property-text-monaco {
   min-height: 0;
@@ -219,6 +388,40 @@ function handleKeydown(event) {
   max-height: 120px;
   overflow: auto;
   margin: 4px 0;
+}
+.property-text-editor.is-expanded .property-text-errors.is-resizable {
+  flex: 0 1 var(--property-text-errors-height);
+  height: var(--property-text-errors-height);
+  min-height: 48px;
+  max-height: none;
+}
+.property-text-splitter {
+  position: relative;
+  flex: 0 0 18px;
+  min-height: 18px;
+  cursor: ns-resize;
+  touch-action: none;
+  user-select: none;
+}
+.property-text-splitter::after {
+  position: absolute;
+  top: 7px;
+  left: 50%;
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-hairline);
+  content: '';
+  transform: translateX(-50%);
+}
+.property-text-splitter:hover::after { background: var(--color-primary); }
+.property-text-splitter:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+@media (pointer: coarse) {
+  .property-text-splitter { flex-basis: 44px; min-height: 44px; }
+  .property-text-splitter::after { top: 20px; }
 }
 .property-text-editor.is-expanded .property-text-footer {
   flex: 0 0 auto;

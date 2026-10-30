@@ -11,6 +11,7 @@ import {
   hydrateLinks,
   hydrateNodes,
 } from '@/features/can-arch/domain/can-arch-topology.js';
+import { countInvalidMessageReceiverEntries } from '@/features/can-arch/domain/message-receiver-state.js';
 import { HISTORY_LIMIT, STORAGE_KEY } from '@/features/can-arch/domain/can-arch-constants.js';
 
 export function createTopologyStore({
@@ -30,11 +31,14 @@ export function createTopologyStore({
   const canRedo = computed(() => history.canRedo);
 
   function persist() {
-    repository.save({
+    return repository.save({
       nodes: cloneNodesSnapshot(nodes.value),
       buses: cloneBusesSnapshot(buses.value),
       links: cloneLinksSnapshot(links.value),
-    }).catch((error) => onStatus?.(`架构保存失败：${error.message}`, true));
+    }).catch((error) => {
+      onStatus?.(`架构保存失败：${error.message}`, true);
+      return false;
+    });
   }
 
   function takeSnapshot() {
@@ -78,9 +82,13 @@ export function createTopologyStore({
   async function load() {
     const payload = await repository.load();
     if (!payload) return;
+    const removedMessages = countInvalidMessageReceiverEntries(payload.nodes);
     nodes.value = hydrateNodes(payload.nodes || [], { nextNodePosition });
     buses.value = hydrateBuses(payload.buses || [], { nextBusPosition });
     links.value = hydrateLinks(payload.links || [], nodes.value, buses.value);
+    if (removedMessages > 0) {
+      if (await persist()) onStatus?.(`已自动清理 ${removedMessages} 条收发方配置不完整的报文。`);
+    }
   }
 
   function resetHistory() {
@@ -89,6 +97,7 @@ export function createTopologyStore({
 
   function applyConfigPayload(payload, { clearSelection, syncDrafts, closeContextMenu } = {}) {
     const incoming = extractTopologyFromConfigPayload(payload);
+    const removedMessages = countInvalidMessageReceiverEntries(incoming.nodes);
     pushHistory();
     nodes.value = hydrateNodes(incoming.nodes, { nextNodePosition });
     buses.value = hydrateBuses(incoming.buses, { nextBusPosition });
@@ -98,7 +107,10 @@ export function createTopologyStore({
     if (closeContextMenu) closeContextMenu();
     persist();
     if (onStatus) {
-      onStatus(`已导入架构配置（${nodes.value.length} 个 ECU，${buses.value.length} 个 BUS）。`);
+      const cleanupNotice = removedMessages > 0
+        ? ` 已自动清理 ${removedMessages} 条收发方配置不完整的报文。`
+        : '';
+      onStatus(`已导入架构配置（${nodes.value.length} 个 ECU，${buses.value.length} 个 BUS）。${cleanupNotice}`);
     }
   }
 

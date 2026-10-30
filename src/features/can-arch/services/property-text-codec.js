@@ -5,9 +5,25 @@ export const PROPERTY_TEXT_MAX_BYTES = 64 * 1024;
 export function serializePropertyText(properties, format = 'json', { hexFields = [] } = {}) {
   if (format === 'yaml') {
     const document = new Document(properties, { version: '1.2', schema: 'core' });
-    for (const field of hexFields) {
-      const scalar = document.get(field, true);
-      if (isScalar(scalar) && Number.isSafeInteger(scalar.value) && scalar.value >= 0) scalar.format = 'HEX';
+    for (const path of hexFields) {
+      let nodes = [document];
+      for (const [index, segment] of path.split('.').entries()) {
+        const sequencePath = segment.endsWith('[]');
+        const key = sequencePath ? segment.slice(0, -2) : segment;
+        if (sequencePath) {
+          nodes = nodes.flatMap((node) => {
+            const sequence = node.get(key, true);
+            return Array.isArray(sequence?.items) ? sequence.items : [];
+          });
+        } else if (index < path.split('.').length - 1) {
+          nodes = nodes.map((node) => node.get(key, true)).filter(Boolean);
+        } else {
+          nodes = nodes.map((node) => node.get(key, true)).filter(Boolean);
+        }
+      }
+      for (const scalar of nodes) {
+        if (isScalar(scalar) && Number.isSafeInteger(scalar.value) && scalar.value >= 0) scalar.format = 'HEX';
+      }
     }
     return document.toString({ lineWidth: 0, blockQuote: 'literal' });
   }

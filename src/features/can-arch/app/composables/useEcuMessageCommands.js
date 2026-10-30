@@ -1,4 +1,5 @@
 import { reactive, ref } from 'vue';
+import { isMessageWorkspaceEntryValid } from '../../domain/message-receiver-state.js';
 
 const clipboard = ref(null);
 
@@ -175,7 +176,7 @@ export function useEcuMessageCommands({
           cloned.receivers = (cloned.receivers || []).filter((rid) => validPeerIds.has(rid));
         }
       }
-      targetList.push(cloned);
+      if (isMessageWorkspaceEntryValid(cloned)) targetList.push(cloned);
     }
 
     const signalItems = clipboard.value.items.filter((item) => item.type === 'signal');

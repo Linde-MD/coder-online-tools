@@ -3,6 +3,8 @@ import { computed, reactive, ref, shallowRef, watch } from 'vue';
 export function usePropertyTextEditor({
   entity, drafts, persistChanges, serialize, parse, label,
   format = ref('json'), capture = (current) => JSON.parse(serialize(current)),
+  apply = (target, properties) => Object.assign(target, properties),
+  restore = (target, snapshot) => Object.assign(target, snapshot),
 }) {
   const draft = shallowRef(null);
 
@@ -63,7 +65,7 @@ export function usePropertyTextEditor({
     record.saving = true;
     record.saveError = '';
     record.notice = '';
-    Object.assign(target, properties);
+    apply(target, properties);
     try {
       if (await persistChanges() !== true) throw new Error('浏览器存储写入失败，请重试。');
       record.sourceSnapshot = appliedSnapshot;
@@ -71,7 +73,7 @@ export function usePropertyTextEditor({
       record.notice = '已保存';
       return true;
     } catch (error) {
-      if (serialize(target) === appliedSnapshot) Object.assign(target, previous);
+      if (serialize(target) === appliedSnapshot) restore(target, previous);
       record.saveError = `保存失败：${error?.message || '浏览器存储不可用'}`;
       return false;
     } finally {

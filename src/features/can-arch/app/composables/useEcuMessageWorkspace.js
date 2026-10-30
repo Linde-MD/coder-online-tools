@@ -1,5 +1,6 @@
 import { computed, nextTick, ref, watch } from 'vue';
 import { CanMessage } from '../../domain/models/CanMessage.js';
+import { isMessageWorkspaceEntryValid } from '../../domain/message-receiver-state.js';
 import { validateSignalLayout } from '../../services/signal-layout.js';
 import { decodeJ1939Id, encodeJ1939IdFromPgn, parseNumberInput } from '../../../../shared/utils/j1939.js';
 
@@ -585,18 +586,21 @@ export function useEcuMessageWorkspace({ ecuRef, busTabsRef }) {
   const filteredRxMessages = computed(() =>
     rxMessages.value.filter((message) => {
       const addressedToCurrentEcu = intersects(message.receivers, [ecuId.value]);
-      const peerOk = (includeRxBroadcast.value && message.receiverMode === 'broadcast') || addressedToCurrentEcu;
+      const peerOk = filterPeerIds.value.length === 0 || intersects(message.senders, filterPeerIds.value);
+      const deliveryOk = (includeRxBroadcast.value && message.receiverMode === 'broadcast') || addressedToCurrentEcu;
       const protocolOk = filterProtocols.value.length === 0 || filterProtocols.value.includes(message.protocol);
-      return peerOk && protocolOk;
+      return peerOk && deliveryOk && protocolOk;
     })
   );
 
   const filteredTxMessages = computed(() =>
     txMessages.value.filter((message) => {
       const ownsMessage = intersects(message.senders, [ecuId.value]);
-      const peerOk = ownsMessage;
+      const peerOk = filterPeerIds.value.length === 0
+        || message.receiverMode === 'broadcast'
+        || intersects(message.receivers, filterPeerIds.value);
       const protocolOk = filterProtocols.value.length === 0 || filterProtocols.value.includes(message.protocol);
-      return peerOk && protocolOk;
+      return ownsMessage && peerOk && protocolOk;
     })
   );
 
@@ -667,7 +671,10 @@ export function useEcuMessageWorkspace({ ecuRef, busTabsRef }) {
   function addMessage(pane) {
     if (!activeTab.value) return;
     const targetList = pane === 'rx' ? rxMessages.value : txMessages.value;
-    targetList.push(createDefaultMessage(pane));
+    const message = createDefaultMessage(pane);
+    if (!isMessageWorkspaceEntryValid(message)) return null;
+    targetList.push(message);
+    return message;
   }
 
   function addSignalToMessage(message) {
